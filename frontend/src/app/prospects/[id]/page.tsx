@@ -306,7 +306,7 @@ function OutreachView({
     setError('');
     try {
       const email = await generateOutreach({ prospect_id: prospectId, ...form });
-      setResult(email as OutreachEmail);
+      setResult(email);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Generation failed. Try again.');
     } finally {
@@ -457,6 +457,8 @@ export default function ProspectDetail() {
   const [prospect, setProspect] = useState<Prospect | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('research');
+  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   useEffect(() => {
     getProspect(id)
@@ -467,11 +469,18 @@ export default function ProspectDetail() {
 
   const handleStatusChange = async (newStatus: string) => {
     if (!prospect) return;
+
+    setStatusError(null);
+    setStatusUpdating(true);
+
     try {
       const updated = await updateProspectStatus(id, newStatus);
       setProspect(updated);
     } catch (err) {
       console.error(err);
+      setStatusError('Failed to update status. Please try again.');
+    } finally {
+      setStatusUpdating(false);
     }
   };
 
@@ -541,17 +550,23 @@ export default function ProspectDetail() {
             </div>
           )}
 
-          <select
-            value={prospect.status}
-            onChange={(e) => handleStatusChange(e.target.value)}
-            className="border border-slate-200 bg-white rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-              </option>
-            ))}
-          </select>
+          <div>
+            <select
+              value={prospect.status}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={statusUpdating}
+              className="border border-slate-200 bg-white rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+            >
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                </option>
+              ))}
+            </select>
+            {statusError && (
+              <p className="mt-1 text-xs text-red-600">{statusError}</p>
+            )}
+          </div>
         </div>
       </div>
 

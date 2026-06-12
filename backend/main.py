@@ -213,7 +213,7 @@ Return ONLY this JSON:
         prospects_db[request.prospect_id]["outreach_emails"].append(entry)
         prospects_db[request.prospect_id]["status"] = "outreach_ready"
 
-        return email_data
+        return entry
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

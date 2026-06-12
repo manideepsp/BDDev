@@ -79,7 +79,24 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, options);
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `Request failed: ${res.status}`);
+
+    let message = text || `Request failed: ${res.status}`;
+
+    try {
+      const data = JSON.parse(text);
+      if (
+        data &&
+        typeof data === 'object' &&
+        'detail' in data &&
+        typeof (data as { detail: unknown }).detail === 'string'
+      ) {
+        message = (data as { detail: string }).detail;
+      }
+    } catch {
+      // Response is not valid JSON; fall back to the raw text / generic message.
+    }
+
+    throw new Error(message);
   }
   return res.json();
 }
