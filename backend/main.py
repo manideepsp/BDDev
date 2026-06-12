@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import anthropic
+from groq import Groq
 import os
 from dotenv import load_dotenv
 import json
@@ -22,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # In-memory store for demo
 prospects_db: dict = {}
@@ -118,12 +118,12 @@ Return a JSON object with this exact structure. Be specific, realistic, and acti
 Be insightful and specific. Return ONLY the JSON object, no other text."""
 
     try:
-        message = client.messages.create(
-            model="claude-opus-4-8",
+        message = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
             max_tokens=2500,
             messages=[{"role": "user", "content": prompt}],
         )
-        research_data = extract_json(message.content[0].text)
+        research_data = extract_json(message.choices[0].message.content)
 
         prospect_id = str(uuid.uuid4())
         prospect = {
@@ -195,12 +195,12 @@ Return ONLY this JSON:
 }}"""
 
     try:
-        message = client.messages.create(
-            model="claude-opus-4-8",
+        message = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
         )
-        email_data = extract_json(message.content[0].text)
+        email_data = extract_json(message.choices[0].message.content)
 
         entry = {
             "id": str(uuid.uuid4()),
