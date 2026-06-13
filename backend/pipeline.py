@@ -51,7 +51,7 @@ async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | N
         save_prospects(pipeline_id, prospects)
         intelligence["prospects"] = prospects  # put back for storage
 
-        await asyncio.get_event_loop().run_in_executor(
+        await asyncio.get_running_loop().run_in_executor(
             None, lambda: VectorStoreAgent().embed_and_store(pipeline_id, company_name, intelligence))
 
         update_pipeline_status(pipeline_id, "complete", intelligence_json=intelligence)
