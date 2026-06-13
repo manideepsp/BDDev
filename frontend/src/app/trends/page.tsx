@@ -34,7 +34,7 @@ export default function TrendsPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Market Trends</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Cumulative insights from {data?.total_companies_analyzed ?? 0} companies analysed
+            Cumulative insights from {data?.total_companies_analyzed ?? 0} companies analyzed
           </p>
         </div>
         <span className="text-sm bg-indigo-100 text-indigo-700 font-medium px-3 py-1.5 rounded-full">
