@@ -68,7 +68,7 @@ def generate_market_trends(groq_client, vector_agent) -> dict:
     if total < 3:
         return {
             "clusters": [],
-            "overall_summary": "Not enough data yet. Research at least 3 companies to unlock market trends.",
+            "overall_summary": "Not enough data yet. Analyze at least 3 companies to unlock market trends.",
             "total_companies_analyzed": total,
         }
     try:
