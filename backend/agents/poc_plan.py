@@ -1,5 +1,5 @@
-import json, logging, sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import json, logging
+from utils import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +8,6 @@ class POCPlanAgent:
         self.client = groq_client
 
     def run(self, prospect: dict, intelligence: dict, user_description: str, company_name: str) -> dict:
-        from main import extract_json
         prompt = f"""You are a senior BD consultant. Create a concise, actionable POC engagement plan.
 
 TARGET: {prospect.get('name','Unknown')} ({prospect.get('title','')}) at {company_name}

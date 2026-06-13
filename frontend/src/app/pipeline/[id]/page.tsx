@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getPipeline, Pipeline, PipelineProspect } from '@/lib/api';
 
-const STAGES = ['scraping', 'linkedin', 'keywords', 'researching', 'insights', 'embedding', 'complete'] as const;
+const PIPELINE_STAGES = ['scraping', 'linkedin', 'keywords', 'researching', 'insights', 'embedding'] as const;
 const STAGE_LABELS: Record<string, string> = {
   pending: 'Starting...', scraping: 'Scraping Website', linkedin: 'LinkedIn Intelligence',
   keywords: 'Extracting Keywords', researching: 'Web Research',
@@ -12,8 +12,8 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 function StageTracker({ status }: { status: string }) {
-  const stages = ['scraping', 'linkedin', 'keywords', 'researching', 'insights', 'embedding'];
-  const currentIdx = stages.indexOf(status);
+  const stages = PIPELINE_STAGES;
+  const currentIdx = stages.indexOf(status as typeof PIPELINE_STAGES[number]);
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-4">Pipeline Progress</p>

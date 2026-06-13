@@ -1,6 +1,6 @@
-import json, logging, uuid, sys, os
+import json, logging, uuid
 from datetime import datetime
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from utils import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,6 @@ class EmailGeneratorAgent:
 
     def run(self, prospect: dict, poc_plan: dict, intelligence: dict, company_name: str,
             sender_name: str, sender_company: str, sender_offering: str, tone: str) -> dict:
-        from main import extract_json
         keywords = intelligence.get("key_keywords", [])
         top_pain = intelligence.get("pain_points", [""])[0]
         tone_desc = TONE_MAP.get(tone, TONE_MAP["professional"])

@@ -1,5 +1,5 @@
-import json, logging, sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import json, logging
+from utils import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +9,6 @@ class InsightsAgent:
 
     def run(self, company_name: str, website_data: dict, linkedin_data: dict,
             keywords: dict, research_results: dict, user_description: str) -> dict:
-        from main import extract_json
         context_parts = []
         for page in website_data.get("pages", [])[:2]:
             context_parts.append(f"WEBSITE: {page.get('text','')[:600]}")

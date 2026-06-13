@@ -18,7 +18,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Nexus BD API", version="2.0.0")
 
-allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")]
+_default_allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+_raw_allowed_origins = os.getenv("ALLOWED_ORIGINS")
+if _raw_allowed_origins is None:
+    allowed_origins = _default_allowed_origins
+else:
+    allowed_origins = [o.strip() for o in _raw_allowed_origins.split(",") if o.strip()]
+    if not allowed_origins:
+        allowed_origins = _default_allowed_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -186,7 +193,7 @@ async def generate_poc_plan(pipeline_id: str, body: POCRequest):
         return poc
     except Exception as e:
         logger.error(f"POC plan generation failed: {e}")
-        raise HTTPException(status_code=502, detail=f"LLM unavailable: {e}")
+        raise HTTPException(status_code=502, detail="LLM unavailable")
 
 @app.post("/api/v2/pipeline/{pipeline_id}/email")
 async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
@@ -210,7 +217,7 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
         return email
     except Exception as e:
         logger.error(f"Email generation failed: {e}")
-        raise HTTPException(status_code=502, detail=f"LLM unavailable: {e}")
+        raise HTTPException(status_code=502, detail="LLM unavailable")
 
 @app.get("/api/v2/pipeline/{pipeline_id}/emails")
 async def get_pipeline_emails(pipeline_id: str):

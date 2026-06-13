@@ -1,5 +1,5 @@
-import logging, sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import logging
+from utils import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +8,6 @@ class KeywordExtractionAgent:
         self.client = groq_client
 
     def run(self, website_data: dict, linkedin_data: dict, user_description: str, company_name: str) -> dict:
-        from main import extract_json
         # Build context
         parts = []
         for page in website_data.get("pages", [])[:2]:

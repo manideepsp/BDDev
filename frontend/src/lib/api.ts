@@ -215,7 +215,7 @@ export interface EmailV2Request {
 }
 
 export async function startAnalysis(data: AnalyzeRequest): Promise<{ pipeline_id: string; status: string }> {
-  return request('/v2/analyze', {
+  return request('/api/v2/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -223,19 +223,19 @@ export async function startAnalysis(data: AnalyzeRequest): Promise<{ pipeline_id
 }
 
 export async function getPipeline(id: string): Promise<Pipeline> {
-  return request(`/v2/pipeline/${id}`);
+  return request(`/api/v2/pipeline/${id}`);
 }
 
 export async function listPipelines(): Promise<Pipeline[]> {
-  return request('/v2/pipelines');
+  return request('/api/v2/pipelines');
 }
 
 export async function getPipelineProspects(pipelineId: string): Promise<PipelineProspect[]> {
-  return request(`/v2/pipeline/${pipelineId}/prospects`);
+  return request(`/api/v2/pipeline/${pipelineId}/prospects`);
 }
 
 export async function generatePOCPlan(pipelineId: string, data: POCRequest): Promise<POCPlan> {
-  return request(`/v2/pipeline/${pipelineId}/poc-plan`, {
+  return request(`/api/v2/pipeline/${pipelineId}/poc-plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -243,7 +243,7 @@ export async function generatePOCPlan(pipelineId: string, data: POCRequest): Pro
 }
 
 export async function generateEmailV2(pipelineId: string, data: EmailV2Request): Promise<OutreachEmail> {
-  return request(`/v2/pipeline/${pipelineId}/email`, {
+  return request(`/api/v2/pipeline/${pipelineId}/email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -251,13 +251,13 @@ export async function generateEmailV2(pipelineId: string, data: EmailV2Request):
 }
 
 export async function getPipelineEmails(pipelineId: string): Promise<OutreachEmail[]> {
-  return request(`/v2/pipeline/${pipelineId}/emails`);
+  return request(`/api/v2/pipeline/${pipelineId}/emails`);
 }
 
 export async function getMarketTrends(): Promise<TrendsResponse> {
-  return request('/v2/trends');
+  return request('/api/v2/trends');
 }
 
 export async function getStats(): Promise<Stats> {
-  return request('/stats');
+  return request('/api/stats');
 }

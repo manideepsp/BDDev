@@ -1,5 +1,6 @@
 import asyncio, logging, uuid
 from datetime import datetime
+from utils import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,6 @@ async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | N
 
 
 def generate_market_trends(groq_client, vector_agent) -> dict:
-    from main import extract_json
     payloads = vector_agent.get_all_for_clustering()
     total = len(payloads)
     if total < 3:
