@@ -16,7 +16,7 @@ async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | N
 
     try:
         update_pipeline_status(pipeline_id, "scraping")
-        scraper_result = await asyncio.get_event_loop().run_in_executor(
+        scraper_result = await asyncio.get_running_loop().run_in_executor(
             None, lambda: WebsiteScraperAgent().run(company_name, company_url))
         logger.info(f"[{pipeline_id}] Scraped {len(scraper_result.get('pages',[]))} pages")
 
