@@ -21,7 +21,7 @@ async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | N
         logger.info(f"[{pipeline_id}] Scraped {len(scraper_result.get('pages',[]))} pages")
 
         update_pipeline_status(pipeline_id, "linkedin")
-        linkedin_result = await asyncio.get_event_loop().run_in_executor(
+        linkedin_result = await asyncio.get_running_loop().run_in_executor(
             None, lambda: LinkedInAgent().run(company_name))
         logger.info(f"[{pipeline_id}] LinkedIn: {len(linkedin_result.get('people',[]))} people")
 
