@@ -172,8 +172,7 @@ export interface Pipeline {
   sender_name?: string;
   sender_company?: string;
   status: 'pending' | 'scraping' | 'linkedin' | 'keywords' | 'researching' | 'insights' | 'embedding' | 'complete' | 'failed';
-  intelligence?: Research & { sources?: {title:string;url:string}[]; grounded?: boolean; key_keywords?: string[]; prospects?: PipelineProspect[] };
-  prospects?: PipelineProspect[];
+  intelligence?: Omit<Research, 'key_people'> & { sources?: { title: string; url: string }[]; grounded?: boolean; key_keywords?: string[]; prospects?: PipelineProspect[] };
   error_message?: string;
   created_at: string;
 }
