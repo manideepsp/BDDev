@@ -1,7 +1,7 @@
 import sqlite3, json, os
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "nexus.db")
+DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "nexus.db"))
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
