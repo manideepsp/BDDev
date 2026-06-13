@@ -134,3 +134,130 @@ export async function updateProspectStatus(id: string, status: string): Promise<
 export async function deleteProspect(id: string): Promise<void> {
   await request(`/prospects/${id}`, { method: 'DELETE' });
 }
+
+export interface AnalyzeRequest {
+  company_name: string;
+  company_url?: string;
+  user_description: string;
+  sender_name?: string;
+  sender_company?: string;
+}
+
+export interface PipelineProspect {
+  id: string;
+  pipeline_id: string;
+  name: string;
+  title: string;
+  relevance: string;
+  contact_angle: string;
+  confidence: 'high' | 'medium' | 'low';
+  poc_plan?: POCPlan;
+}
+
+export interface POCPlan {
+  objective: string;
+  approach: string;
+  timeline: string;
+  value_proposition: string;
+  success_metrics: string[];
+  talking_points: string[];
+  risks: string[];
+}
+
+export interface Pipeline {
+  id: string;
+  company_name: string;
+  company_url?: string;
+  user_description: string;
+  sender_name?: string;
+  sender_company?: string;
+  status: 'pending' | 'scraping' | 'linkedin' | 'keywords' | 'researching' | 'insights' | 'embedding' | 'complete' | 'failed';
+  intelligence?: Research & { sources?: {title:string;url:string}[]; grounded?: boolean; key_keywords?: string[]; prospects?: PipelineProspect[] };
+  prospects?: PipelineProspect[];
+  error_message?: string;
+  created_at: string;
+}
+
+export interface TrendsCluster {
+  theme: string;
+  companies: string[];
+  insight: string;
+  opportunity: string;
+}
+
+export interface TrendsResponse {
+  clusters: TrendsCluster[];
+  overall_summary: string;
+  total_companies_analyzed: number;
+}
+
+export interface Stats {
+  total_pipelines: number;
+  active_pipelines: number;
+  completed_pipelines: number;
+  total_prospects_identified: number;
+  avg_engagement_score: number;
+}
+
+export interface POCRequest {
+  prospect_id: string;
+  sender_name: string;
+  sender_company: string;
+  user_description: string;
+}
+
+export interface EmailV2Request {
+  prospect_id: string;
+  sender_name: string;
+  sender_company: string;
+  sender_offering: string;
+  tone: 'professional' | 'conversational' | 'bold';
+}
+
+export async function startAnalysis(data: AnalyzeRequest): Promise<{ pipeline_id: string; status: string }> {
+  return request('/v2/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getPipeline(id: string): Promise<Pipeline> {
+  return request(`/v2/pipeline/${id}`);
+}
+
+export async function listPipelines(): Promise<Pipeline[]> {
+  return request('/v2/pipelines');
+}
+
+export async function getPipelineProspects(pipelineId: string): Promise<PipelineProspect[]> {
+  return request(`/v2/pipeline/${pipelineId}/prospects`);
+}
+
+export async function generatePOCPlan(pipelineId: string, data: POCRequest): Promise<POCPlan> {
+  return request(`/v2/pipeline/${pipelineId}/poc-plan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function generateEmailV2(pipelineId: string, data: EmailV2Request): Promise<OutreachEmail> {
+  return request(`/v2/pipeline/${pipelineId}/email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getPipelineEmails(pipelineId: string): Promise<OutreachEmail[]> {
+  return request(`/v2/pipeline/${pipelineId}/emails`);
+}
+
+export async function getMarketTrends(): Promise<TrendsResponse> {
+  return request('/v2/trends');
+}
+
+export async function getStats(): Promise<Stats> {
+  return request('/stats');
+}
