@@ -37,7 +37,7 @@ async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | N
         logger.info(f"[{pipeline_id}] Research: {len(research.get('results',[]))} results")
 
         update_pipeline_status(pipeline_id, "insights")
-        intelligence = await asyncio.get_event_loop().run_in_executor(
+        intelligence = await asyncio.get_running_loop().run_in_executor(
             None, lambda: InsightsAgent(groq_client).run(
                 company_name, scraper_result, linkedin_result, keywords, research, user_description))
         logger.info(f"[{pipeline_id}] Insights complete, {len(intelligence.get('prospects',[]))} prospects")
