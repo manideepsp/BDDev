@@ -145,7 +145,7 @@ export interface AnalyzeRequest {
 
 export interface PipelineProspect {
   id: string;
-  pipeline_id: string;
+  pipeline_id?: string;
   name: string;
   title: string;
   relevance: string;
