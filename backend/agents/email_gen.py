@@ -1,6 +1,6 @@
 import json, logging, uuid
 from datetime import datetime
-from utils import extract_json
+from utils import extract_json, pain_point_titles
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,8 @@ class EmailGeneratorAgent:
     def run(self, prospect: dict, poc_plan: dict, intelligence: dict, company_name: str,
             sender_name: str, sender_company: str, sender_offering: str, tone: str) -> dict:
         keywords = intelligence.get("key_keywords", [])
-        top_pain = intelligence.get("pain_points", [""])[0]
+        _pains = pain_point_titles(intelligence, limit=1)
+        top_pain = _pains[0] if _pains else ""
         tone_desc = TONE_MAP.get(tone, TONE_MAP["professional"])
 
         prompt = f"""You are a top-tier BD strategist who writes emails that get responses.

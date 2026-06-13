@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  getPipeline, getPipelineProspects, generatePOCPlan, generateEmailV2,
-  Pipeline, PipelineProspect, POCPlan, OutreachEmail,
+  getPipeline, getPipelineProspects, generatePOCPlan, generateEmailV2, generatePitchAssets,
+  Pipeline, PipelineProspect, POCPlan, OutreachEmail, PitchAssets,
 } from '@/lib/api';
+import Feedback from '@/components/Feedback';
 
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -71,6 +72,9 @@ export default function ProspectPage() {
   const [prospect, setProspect] = useState<PipelineProspect | null>(null);
   const [pocPlan, setPocPlan] = useState<POCPlan | null>(null);
   const [emails, setEmails] = useState<OutreachEmail[]>([]);
+  const [pitchAssets, setPitchAssets] = useState<PitchAssets | null>(null);
+  const [loadingPitch, setLoadingPitch] = useState(false);
+  const [pitchError, setPitchError] = useState('');
   const [loadingPOC, setLoadingPOC] = useState(false);
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [emailForm, setEmailForm] = useState({
@@ -146,6 +150,28 @@ export default function ProspectPage() {
       setEmailError(err instanceof Error ? err.message : 'Failed to generate email');
     } finally {
       setLoadingEmail(false);
+    }
+  }
+
+  async function handleGeneratePitch() {
+    if (!emailForm.sender_offering.trim()) {
+      setPitchError('Add what you offer (below) first, then generate pitch assets.');
+      return;
+    }
+    setLoadingPitch(true);
+    setPitchError('');
+    try {
+      const assets = await generatePitchAssets(pipelineId, {
+        prospect_id: prospectId,
+        sender_name: emailForm.sender_name,
+        sender_company: emailForm.sender_company,
+        sender_offering: emailForm.sender_offering,
+      });
+      setPitchAssets(assets);
+    } catch (err) {
+      setPitchError(err instanceof Error ? err.message : 'Failed to generate pitch assets');
+    } finally {
+      setLoadingPitch(false);
     }
   }
 
@@ -344,8 +370,73 @@ export default function ProspectPage() {
           <div key={email.id} className="space-y-4 mb-4">
             <EmailCard title="Primary Email" subject={email.subject} body={email.body} />
             <EmailCard title="Follow-up Email" badge="Send 7 days later" subject={email.follow_up_subject} body={email.follow_up_body} />
+            <div className="flex justify-end">
+              <Feedback outputType="email" pipelineId={pipelineId} prospectId={prospectId} outputId={email.id} label="Rate this email:" />
+            </div>
           </div>
         ))}
+      </div>
+
+      {/* Pitch Assets */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Pitch Assets</p>
+          <button
+            onClick={handleGeneratePitch}
+            disabled={loadingPitch}
+            className="text-sm bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            {loadingPitch ? '⟳ Generating...' : pitchAssets ? '↻ Regenerate Bundle' : '📦 Generate Full Pitch Bundle'}
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-3">Uses the sender details &amp; offering you entered above. Produces an exec summary, two cold emails, a LinkedIn note, and discovery talking points.</p>
+
+        {pitchError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-3">⚠️ {pitchError}</div>
+        )}
+
+        {pitchAssets && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Executive Summary</p>
+                <CopyBtn text={pitchAssets.executive_summary} />
+              </div>
+              <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{pitchAssets.executive_summary}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <EmailCard title="Cold Email — Short" subject="(short version)" body={pitchAssets.cold_email_short} />
+              <EmailCard title="Cold Email — Detailed" subject="(detailed version)" body={pitchAssets.cold_email_detailed} />
+            </div>
+
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">LinkedIn Connection Note</p>
+                <CopyBtn text={pitchAssets.linkedin_message} />
+              </div>
+              <p className="text-sm text-slate-700">{pitchAssets.linkedin_message}</p>
+              <p className="text-xs text-slate-400 mt-1">{pitchAssets.linkedin_message.length} chars</p>
+            </div>
+
+            {(pitchAssets.talking_points ?? []).length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Discovery Call Talking Points</p>
+                <ul className="space-y-1.5">
+                  {pitchAssets.talking_points.map((t, i) => (
+                    <li key={i} className="text-sm text-slate-700 flex gap-2">
+                      <span className="text-indigo-400 flex-shrink-0">▸</span>{t}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Feedback outputType="pitch_assets" pipelineId={pipelineId} prospectId={prospectId} outputId={pitchAssets.id} label="Rate this bundle:" />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

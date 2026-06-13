@@ -141,6 +141,75 @@ export interface AnalyzeRequest {
   user_description: string;
   sender_name?: string;
   sender_company?: string;
+  linkedin_url?: string;
+  deal_size?: string;
+  priority?: string;
+  notes?: string;
+}
+
+export interface PainPoint {
+  title: string;
+  severity: 'high' | 'medium' | 'low';
+  evidence: string[];
+  inference: string;
+  opportunity: string;
+  pitch_angle?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface ICPBreakdown {
+  industry_fit: number;
+  tech_alignment: number;
+  company_size: number;
+  pain_service_fit: number;
+  budget_probability: number;
+  decision_readiness: number;
+}
+
+export interface ICPScore {
+  overall: number;
+  breakdown: ICPBreakdown;
+  recommended_action: string;
+  suggested_deal_size: string;
+  best_entry_point: string;
+}
+
+export interface TechStack {
+  current: string[];
+  hiring: string[];
+  gaps: string[];
+}
+
+export interface PitchAssets {
+  id: string;
+  created_at: string;
+  executive_summary: string;
+  cold_email_short: string;
+  cold_email_detailed: string;
+  linkedin_message: string;
+  talking_points: string[];
+}
+
+export interface CompanyProfile {
+  company_name: string;
+  company_type: string;
+  team_size: string;
+  headquarters: string;
+  services: string[];
+  industries: string[];
+  technologies: string;
+  case_studies: string;
+  usps: string;
+  engagement_models: string[];
+}
+
+export interface FeedbackRequest {
+  pipeline_id?: string;
+  prospect_id?: string;
+  output_type: string;
+  output_id?: string;
+  rating: number;
+  note?: string;
 }
 
 export interface PipelineProspect {
@@ -171,8 +240,20 @@ export interface Pipeline {
   user_description: string;
   sender_name?: string;
   sender_company?: string;
+  linkedin_url?: string;
+  deal_size?: string;
+  priority?: string;
+  notes?: string;
   status: 'pending' | 'scraping' | 'linkedin' | 'keywords' | 'researching' | 'insights' | 'embedding' | 'complete' | 'failed';
-  intelligence?: Omit<Research, 'key_people'> & { sources?: { title: string; url: string }[]; grounded?: boolean; key_keywords?: string[]; prospects?: PipelineProspect[] };
+  intelligence?: Omit<Research, 'key_people' | 'pain_points'> & {
+    pain_points?: PainPoint[];
+    tech_stack?: TechStack;
+    icp_score?: ICPScore;
+    sources?: { title: string; url: string }[];
+    grounded?: boolean;
+    key_keywords?: string[];
+    prospects?: PipelineProspect[];
+  };
   prospects?: PipelineProspect[];
   error_message?: string;
   created_at: string;
@@ -260,4 +341,35 @@ export async function getMarketTrends(): Promise<TrendsResponse> {
 
 export async function getStats(): Promise<Stats> {
   return request('/api/stats');
+}
+
+export async function getCompanyProfile(): Promise<Partial<CompanyProfile>> {
+  return request('/api/company-profile');
+}
+
+export async function saveCompanyProfile(data: CompanyProfile): Promise<CompanyProfile> {
+  return request('/api/company-profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function generatePitchAssets(
+  pipelineId: string,
+  data: { prospect_id: string; sender_name: string; sender_company: string; sender_offering: string }
+): Promise<PitchAssets> {
+  return request(`/api/v2/pipeline/${pipelineId}/pitch-assets`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function submitFeedback(data: FeedbackRequest): Promise<{ id: string; ok: boolean }> {
+  return request('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
 }

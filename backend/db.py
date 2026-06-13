@@ -52,13 +52,46 @@ def init_db():
             created_at TEXT,
             FOREIGN KEY (pipeline_id) REFERENCES pipelines(id)
         );
+        CREATE TABLE IF NOT EXISTS company_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            data_json TEXT,
+            updated_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS feedback (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT,
+            prospect_id TEXT,
+            output_type TEXT,
+            output_id TEXT,
+            rating INTEGER,
+            note TEXT,
+            created_at TEXT
+        );
         """)
+        _ensure_columns(conn)
 
-def create_pipeline(id, company_name, company_url, user_description, sender_name=None, sender_company=None):
+
+# Lightweight migration: add target-context columns to existing pipelines tables.
+_PIPELINE_EXTRA_COLUMNS = {
+    "linkedin_url": "TEXT",
+    "deal_size": "TEXT",
+    "priority": "TEXT",
+    "notes": "TEXT",
+}
+
+def _ensure_columns(conn):
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
+    for col, coltype in _PIPELINE_EXTRA_COLUMNS.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE pipelines ADD COLUMN {col} {coltype}")
+
+def create_pipeline(id, company_name, company_url, user_description, sender_name=None, sender_company=None,
+                    linkedin_url=None, deal_size=None, priority=None, notes=None):
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO pipelines (id,company_name,company_url,user_description,sender_name,sender_company,status,created_at) VALUES (?,?,?,?,?,?,'pending',?)",
-            (id, company_name, company_url, user_description, sender_name, sender_company, datetime.now().isoformat())
+            "INSERT INTO pipelines (id,company_name,company_url,user_description,sender_name,sender_company,linkedin_url,deal_size,priority,notes,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,'pending',?)",
+            (id, company_name, company_url, user_description, sender_name, sender_company,
+             linkedin_url, deal_size, priority, notes, datetime.now().isoformat())
         )
 
 def update_pipeline_status(id, status, intelligence_json=None, error=None):
@@ -146,6 +179,36 @@ def get_emails(pipeline_id):
                     d["keywords_used"] = []
             result.append(d)
         return result
+
+def save_company_profile(data: dict):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO company_profile (id,data_json,updated_at) VALUES (1,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json, updated_at=excluded.updated_at",
+            (json.dumps(data), datetime.now().isoformat())
+        )
+
+def get_company_profile():
+    with get_conn() as conn:
+        row = conn.execute("SELECT data_json FROM company_profile WHERE id=1").fetchone()
+        if not row or not row[0]:
+            return None
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
+
+def save_feedback(id, pipeline_id, prospect_id, output_type, output_id, rating, note):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO feedback (id,pipeline_id,prospect_id,output_type,output_id,rating,note,created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (id, pipeline_id, prospect_id, output_type, output_id, rating, note, datetime.now().isoformat())
+        )
+
+def get_feedback(pipeline_id):
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM feedback WHERE pipeline_id=? ORDER BY created_at DESC", (pipeline_id,)).fetchall()
+        return [dict(r) for r in rows]
 
 def get_stats():
     with get_conn() as conn:
