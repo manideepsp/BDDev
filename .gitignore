@@ -5,3 +5,7 @@ node_modules/
 venv/
 __pycache__/
 frontend/tsconfig.tsbuildinfo
+backend/nexus.db
+backend/__pycache__/
+backend/agents/__pycache__/
+.qdrant/
