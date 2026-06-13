@@ -49,6 +49,21 @@ class StatusUpdate(BaseModel):
     status: str
 
 
+def _sanitize(text: str) -> str:
+    # Replace literal control characters (0x00-0x1f except \t \n \r) that
+    # the LLM sometimes emits inside string values, breaking json.loads.
+    # Also collapse bare \r\n / \r to \n so the parser sees clean whitespace.
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+
+def _try_parse(text: str) -> dict:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return json.loads(_sanitize(text))
+
+
 def extract_json(text: str) -> dict:
     text = text.strip()
     if text.startswith("```"):
@@ -58,15 +73,15 @@ def extract_json(text: str) -> dict:
             if part.startswith("json"):
                 part = part[4:].strip()
             try:
-                return json.loads(part)
+                return _try_parse(part)
             except Exception:
                 continue
     try:
-        return json.loads(text)
+        return _try_parse(text)
     except Exception:
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
-            return json.loads(match.group())
+            return _try_parse(match.group())
         raise ValueError("No valid JSON found in response")
 
 
