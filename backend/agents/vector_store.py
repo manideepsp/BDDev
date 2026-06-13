@@ -57,7 +57,7 @@ class VectorStoreAgent:
             embeddings = list(self._ef.embed([text]))
             vector = embeddings[0].tolist()
             point = PointStruct(
-                id=abs(hash(pipeline_id)) % (2**63),
+                id=pipeline_id,
                 vector=vector,
                 payload={
                     "pipeline_id": pipeline_id,
