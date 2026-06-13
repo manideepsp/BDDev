@@ -32,7 +32,7 @@ async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | N
         logger.info(f"[{pipeline_id}] Keywords: {keywords.get('keywords',[])}")
 
         update_pipeline_status(pipeline_id, "researching")
-        research = await asyncio.get_event_loop().run_in_executor(
+        research = await asyncio.get_running_loop().run_in_executor(
             None, lambda: WebResearchAgent().run(company_name, keywords, company_url))
         logger.info(f"[{pipeline_id}] Research: {len(research.get('results',[]))} results")
 
