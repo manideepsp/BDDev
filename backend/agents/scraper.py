@@ -18,7 +18,7 @@ class WebsiteScraperAgent:
             if homepage:
                 pages.append(homepage)
                 # Find relevant subpages
-                sub_links = self._find_subpages(company_url, homepage.get("raw_html",""))
+                sub_links = self._find_subpages(homepage.get("url", company_url), homepage.get("raw_html",""))
                 for link in sub_links[:3]:
                     p = self._fetch_page(link)
                     if p:
