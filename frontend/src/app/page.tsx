@@ -136,7 +136,7 @@ export default function Dashboard() {
             <div className="text-center">
               <div className="text-slate-700 font-medium">No analyses yet</div>
               <div className="text-slate-400 text-sm mt-1">
-                Analyse a company to generate your first intelligence report
+                Analyze a company to generate your first intelligence report
               </div>
             </div>
             <Link
