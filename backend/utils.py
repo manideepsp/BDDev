@@ -33,3 +33,17 @@ def extract_json(text: str) -> dict:
         if match:
             return _try_parse(match.group())
         raise ValueError("No valid JSON found in response")
+
+
+def pain_point_titles(intelligence: dict, limit: int = 3) -> list[str]:
+    """Pain points may be evidence-chain objects or plain strings (legacy).
+    Return a flat list of human-readable title strings for embedding / prompts."""
+    out = []
+    for p in (intelligence.get("pain_points") or [])[:limit]:
+        if isinstance(p, dict):
+            title = p.get("title") or p.get("opportunity") or ""
+            if title:
+                out.append(str(title))
+        elif p:
+            out.append(str(p))
+    return out

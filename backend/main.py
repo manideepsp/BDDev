@@ -99,6 +99,10 @@ class AnalyzeRequest(BaseModel):
     user_description: str
     sender_name: Optional[str] = None
     sender_company: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    deal_size: Optional[str] = None
+    priority: Optional[str] = None
+    notes: Optional[str] = None
 
 class POCRequest(BaseModel):
     prospect_id: str
@@ -112,6 +116,32 @@ class EmailRequest(BaseModel):
     sender_company: str
     sender_offering: str
     tone: str = "professional"
+
+class PitchRequest(BaseModel):
+    prospect_id: str
+    sender_name: str
+    sender_company: str
+    sender_offering: str
+
+class CompanyProfileModel(BaseModel):
+    company_name: str = ""
+    company_type: str = ""
+    team_size: str = ""
+    headquarters: str = ""
+    services: List[str] = []
+    industries: List[str] = []
+    technologies: str = ""
+    case_studies: str = ""
+    usps: str = ""
+    engagement_models: List[str] = []
+
+class FeedbackRequest(BaseModel):
+    pipeline_id: Optional[str] = None
+    prospect_id: Optional[str] = None
+    output_type: str
+    output_id: Optional[str] = None
+    rating: int
+    note: Optional[str] = None
 
 # --- startup ---
 
@@ -138,16 +168,21 @@ async def get_stats():
 
 @app.post("/api/v2/analyze")
 async def start_analysis(body: AnalyzeRequest):
-    from db import create_pipeline
+    from db import create_pipeline, get_company_profile
     from pipeline import run_pipeline
     pipeline_id = str(uuid.uuid4())
     create_pipeline(
         pipeline_id, body.company_name, body.company_url,
-        body.user_description, body.sender_name, body.sender_company
+        body.user_description, body.sender_name, body.sender_company,
+        body.linkedin_url, body.deal_size, body.priority, body.notes
     )
+    company_profile = get_company_profile()
+    target_context = {"notes": body.notes, "deal_size": body.deal_size,
+                      "priority": body.priority, "linkedin_url": body.linkedin_url}
     asyncio.create_task(run_pipeline(
         pipeline_id, body.company_name, body.company_url,
-        body.user_description, client
+        body.user_description, client,
+        company_profile=company_profile, target_context=target_context
     ))
     logger.info(f"Started pipeline {pipeline_id} for {body.company_name}")
     return {"pipeline_id": pipeline_id, "status": "pending"}
@@ -228,6 +263,60 @@ async def get_pipeline_emails(pipeline_id: str):
 async def get_trends():
     from pipeline import generate_market_trends
     return generate_market_trends(client, vector_agent)
+
+# --- company profile (your-company onboarding) ---
+
+@app.get("/api/company-profile")
+async def read_company_profile():
+    from db import get_company_profile
+    return get_company_profile() or {}
+
+@app.put("/api/company-profile")
+async def write_company_profile(body: CompanyProfileModel):
+    from db import save_company_profile
+    data = body.model_dump()
+    save_company_profile(data)
+    return data
+
+# --- pitch assets (full BD bundle for a prospect) ---
+
+@app.post("/api/v2/pipeline/{pipeline_id}/pitch-assets")
+async def generate_pitch_assets(pipeline_id: str, body: PitchRequest):
+    from db import get_pipeline as db_get_pipeline, get_prospects, get_company_profile
+    from agents.pitch import PitchAssetAgent
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    intelligence = p.get("intelligence", {})
+    prospects = get_prospects(pipeline_id)
+    prospect = next((pr for pr in prospects if pr["id"] == body.prospect_id), None)
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    try:
+        assets = PitchAssetAgent(client).run(
+            prospect, intelligence, p["company_name"],
+            body.sender_name, body.sender_company, body.sender_offering,
+            company_profile=get_company_profile()
+        )
+        return assets
+    except Exception as e:
+        logger.error(f"Pitch asset generation failed: {e}")
+        raise HTTPException(status_code=502, detail="LLM unavailable")
+
+# --- feedback ---
+
+@app.post("/api/feedback")
+async def submit_feedback(body: FeedbackRequest):
+    from db import save_feedback
+    fid = str(uuid.uuid4())
+    save_feedback(fid, body.pipeline_id, body.prospect_id, body.output_type,
+                  body.output_id, body.rating, body.note)
+    return {"id": fid, "ok": True}
+
+@app.get("/api/feedback/{pipeline_id}")
+async def read_feedback(pipeline_id: str):
+    from db import get_feedback
+    return get_feedback(pipeline_id)
 
 # --- legacy v1 endpoints (kept for backward compatibility) ---
 

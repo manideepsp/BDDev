@@ -1,5 +1,6 @@
 import os, logging, json
 from datetime import datetime
+from utils import pain_point_titles
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +48,13 @@ class VectorStoreAgent:
         try:
             from qdrant_client.models import PointStruct
             overview = intelligence.get("company_overview", {})
+            pains = pain_point_titles(intelligence, limit=3)
             text = (
                 f"{company_name}. "
                 f"{overview.get('description','')}. "
                 f"{' '.join(intelligence.get('key_keywords', []))}. "
                 f"{intelligence.get('business_model','')}. "
-                f"{' '.join(intelligence.get('pain_points', [])[:3])}"
+                f"{' '.join(pains)}"
             )
             embeddings = list(self._ef.embed([text]))
             vector = embeddings[0].tolist()
@@ -64,7 +66,7 @@ class VectorStoreAgent:
                     "company_name": company_name,
                     "industry": overview.get("industry", ""),
                     "engagement_score": intelligence.get("engagement_score", {}).get("score", 0),
-                    "pain_points": intelligence.get("pain_points", [])[:3],
+                    "pain_points": pains,
                     "bd_opportunities": intelligence.get("bd_opportunities", [])[:3],
                     "key_keywords": intelligence.get("key_keywords", []),
                     "created_at": datetime.now().isoformat(),

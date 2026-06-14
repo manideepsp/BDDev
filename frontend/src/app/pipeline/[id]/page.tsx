@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPipeline, Pipeline, PipelineProspect } from '@/lib/api';
+import { getPipeline, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack } from '@/lib/api';
 
 const PIPELINE_STAGES = ['scraping', 'linkedin', 'keywords', 'researching', 'insights', 'embedding'] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -67,6 +67,138 @@ function ConfidenceBadge({ confidence }: { confidence: string }) {
     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${styles[confidence] ?? styles.medium}`}>
       {confidence}
     </span>
+  );
+}
+
+const SEV_STYLES: Record<string, string> = {
+  high: 'bg-red-100 text-red-700',
+  medium: 'bg-amber-100 text-amber-700',
+  low: 'bg-slate-100 text-slate-500',
+};
+
+function PainPointCard({ pain }: { pain: PainPoint }) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <p className="font-semibold text-slate-900 text-sm">{pain.title}</p>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${SEV_STYLES[pain.severity] ?? SEV_STYLES.low}`}>
+            {pain.severity}
+          </span>
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+            {pain.confidence} conf.
+          </span>
+        </div>
+      </div>
+      {(pain.evidence ?? []).length > 0 && (
+        <div className="mb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Evidence</p>
+          <ul className="space-y-1">
+            {pain.evidence.map((e, i) => (
+              <li key={i} className="text-xs text-slate-600 flex gap-2">
+                <span className="text-slate-300 flex-shrink-0">“</span>{e}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {pain.inference && (
+        <div className="mb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Inference</p>
+          <p className="text-xs text-slate-600">{pain.inference}</p>
+        </div>
+      )}
+      {pain.opportunity && (
+        <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2.5 mt-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 mb-0.5">Your Opportunity</p>
+          <p className="text-xs text-emerald-800">{pain.opportunity}</p>
+        </div>
+      )}
+      {pain.pitch_angle && (
+        <p className="text-xs text-indigo-600 italic mt-2">💡 {pain.pitch_angle}</p>
+      )}
+    </div>
+  );
+}
+
+function ScoreBar({ label, value }: { label: string; value: number }) {
+  const v = Math.max(0, Math.min(100, value || 0));
+  const color = v >= 80 ? 'bg-emerald-500' : v >= 60 ? 'bg-amber-500' : 'bg-red-500';
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-slate-600">{label}</span>
+        <span className="text-xs font-medium text-slate-700">{v}%</span>
+      </div>
+      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${v}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function ICPCard({ icp }: { icp: ICPScore }) {
+  const b = icp.breakdown ?? ({} as ICPScore['breakdown']);
+  const rows: [string, number][] = [
+    ['Industry Fit', b.industry_fit], ['Tech Alignment', b.tech_alignment],
+    ['Company Size', b.company_size], ['Pain–Service Fit', b.pain_service_fit],
+    ['Budget Probability', b.budget_probability], ['Decision Readiness', b.decision_readiness],
+  ];
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">ICP Match Score</p>
+        <span className="text-2xl font-bold text-indigo-600">{icp.overall}%</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2.5 mb-4">
+        {rows.map(([label, value]) => <ScoreBar key={label} label={label} value={value} />)}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-3 border-t border-slate-100">
+        {icp.recommended_action && (
+          <div className="bg-indigo-50 rounded-lg p-2.5">
+            <p className="text-[10px] text-indigo-400 uppercase tracking-wider">Action</p>
+            <p className="text-xs font-medium text-indigo-800 mt-0.5">{icp.recommended_action}</p>
+          </div>
+        )}
+        {icp.suggested_deal_size && (
+          <div className="bg-slate-50 rounded-lg p-2.5">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider">Suggested Deal</p>
+            <p className="text-xs font-medium text-slate-700 mt-0.5">{icp.suggested_deal_size}</p>
+          </div>
+        )}
+        {icp.best_entry_point && (
+          <div className="bg-slate-50 rounded-lg p-2.5">
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider">Best Entry Point</p>
+            <p className="text-xs font-medium text-slate-700 mt-0.5">{icp.best_entry_point}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TechStackCard({ tech }: { tech: TechStack }) {
+  const cols: [string, string[], string][] = [
+    ['Current', tech.current ?? [], 'bg-slate-100 text-slate-600'],
+    ['Hiring For', tech.hiring ?? [], 'bg-blue-100 text-blue-700'],
+    ['Gaps', tech.gaps ?? [], 'bg-red-100 text-red-700'],
+  ];
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Technology Signals</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {cols.map(([label, items, cls]) => (
+          <div key={label}>
+            <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">{label}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {items.length > 0
+                ? items.map((t, i) => <span key={i} className={`text-xs px-2 py-0.5 rounded-md ${cls}`}>{t}</span>)
+                : <span className="text-xs text-slate-300">—</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -167,18 +299,26 @@ export default function PipelinePage() {
             </div>
           </div>
 
-          {/* Pain points + Opportunities */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Pain Points</p>
-              <ul className="space-y-2">
-                {(intel.pain_points ?? []).map((p, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />{p}
-                  </li>
-                ))}
-              </ul>
+          {/* ICP match score */}
+          {intel.icp_score && <ICPCard icp={intel.icp_score} />}
+
+          {/* Tech stack signals */}
+          {intel.tech_stack && <TechStackCard tech={intel.tech_stack} />}
+
+          {/* Evidence-based pain points */}
+          {(intel.pain_points ?? []).length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">
+                Pain Points <span className="text-slate-400 normal-case font-normal">— evidence-anchored</span>
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {intel.pain_points!.map((p, i) => <PainPointCard key={i} pain={p} />)}
+              </div>
             </div>
+          )}
+
+          {/* BD Opportunities */}
+          {(intel.bd_opportunities ?? []).length > 0 && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">BD Opportunities</p>
               <ul className="space-y-2">
@@ -189,7 +329,7 @@ export default function PipelinePage() {
                 ))}
               </ul>
             </div>
-          </div>
+          )}
 
           {/* Recommended approach */}
           {intel.recommended_approach && (

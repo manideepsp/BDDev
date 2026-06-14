@@ -5,7 +5,9 @@ from utils import extract_json
 logger = logging.getLogger(__name__)
 
 async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | None,
-                       user_description: str, groq_client) -> None:
+                       user_description: str, groq_client,
+                       company_profile: dict | None = None,
+                       target_context: dict | None = None) -> None:
     from db import update_pipeline_status, save_prospects
     from agents.scraper import WebsiteScraperAgent
     from agents.linkedin import LinkedInAgent
@@ -39,7 +41,8 @@ async def run_pipeline(pipeline_id: str, company_name: str, company_url: str | N
         update_pipeline_status(pipeline_id, "insights")
         intelligence = await asyncio.get_running_loop().run_in_executor(
             None, lambda: InsightsAgent(groq_client).run(
-                company_name, scraper_result, linkedin_result, keywords, research, user_description))
+                company_name, scraper_result, linkedin_result, keywords, research, user_description,
+                company_profile=company_profile, target_context=target_context))
         logger.info(f"[{pipeline_id}] Insights complete, {len(intelligence.get('prospects',[]))} prospects")
 
         update_pipeline_status(pipeline_id, "embedding")

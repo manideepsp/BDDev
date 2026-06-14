@@ -16,6 +16,7 @@ export default function AnalyzePage() {
   const [form, setForm] = useState({
     company_name: '', company_url: '', user_description: '',
     sender_name: '', sender_company: '',
+    linkedin_url: '', deal_size: '', priority: '', notes: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,6 +35,10 @@ export default function AnalyzePage() {
         user_description: form.user_description,
         sender_name: form.sender_name || undefined,
         sender_company: form.sender_company || undefined,
+        linkedin_url: form.linkedin_url || undefined,
+        deal_size: form.deal_size || undefined,
+        priority: form.priority || undefined,
+        notes: form.notes || undefined,
       });
       router.push(`/pipeline/${pipeline_id}`);
     } catch (err) {
@@ -73,12 +78,60 @@ export default function AnalyzePage() {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Company LinkedIn</label>
+              <input
+                type="url"
+                value={form.linkedin_url}
+                onChange={e => setForm(f => ({...f, linkedin_url: e.target.value}))}
+                placeholder="https://linkedin.com/company/... (optional)"
+                className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Deal Size Target</label>
+                <select
+                  value={form.deal_size}
+                  onChange={e => setForm(f => ({...f, deal_size: e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">—</option>
+                  <option value="Small">Small</option>
+                  <option value="Mid">Mid</option>
+                  <option value="Enterprise">Enterprise</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Priority</label>
+                <select
+                  value={form.priority}
+                  onChange={e => setForm(f => ({...f, priority: e.target.value}))}
+                  className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">—</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </div>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Your Offering <span className="text-red-500">*</span></label>
               <textarea
                 value={form.user_description}
                 onChange={e => setForm(f => ({...f, user_description: e.target.value}))}
                 rows={4}
                 placeholder="Briefly describe what you do and what you're offering this prospect..."
+                className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Notes on this Target</label>
+              <textarea
+                value={form.notes}
+                onChange={e => setForm(f => ({...f, notes: e.target.value}))}
+                rows={2}
+                placeholder="Any known context about this company (optional)..."
                 className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
               />
             </div>
