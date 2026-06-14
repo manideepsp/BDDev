@@ -217,9 +217,12 @@ async def continue_pipeline(pipeline_id: str, body: ContinueRequest):
     if body.human_input:
         save_human_input(pipeline_id, body.human_input)
 
+    from db import update_pipeline_status
     company_profile = get_company_profile()
     target_context = {"notes": p.get("notes"), "deal_size": p.get("deal_size"),
                       "priority": p.get("priority"), "linkedin_url": p.get("linkedin_url")}
+    # Update status synchronously so the next poll immediately sees "insights"
+    update_pipeline_status(pipeline_id, "insights")
     asyncio.create_task(run_synthesis_phase(
         pipeline_id, client, human_input=body.human_input,
         company_profile=company_profile, target_context=target_context,
