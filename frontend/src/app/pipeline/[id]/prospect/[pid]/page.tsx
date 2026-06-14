@@ -368,6 +368,16 @@ export default function ProspectPage() {
 
         {emails.map((email) => (
           <div key={email.id} className="space-y-4 mb-4">
+            {email.personalization_hook && (
+              <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2.5 flex items-start gap-2.5">
+                <svg className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <p className="text-xs text-indigo-800 leading-relaxed">
+                  <span className="font-semibold">Anchored on:</span> {email.personalization_hook}
+                </p>
+              </div>
+            )}
             <EmailCard title="Primary Email" subject={email.subject} body={email.body} />
             <EmailCard title="Follow-up Email" badge="Send 7 days later" subject={email.follow_up_subject} body={email.follow_up_body} />
             <div className="flex justify-end">

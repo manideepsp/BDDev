@@ -294,7 +294,7 @@ async def generate_poc_plan(pipeline_id: str, body: POCRequest):
         return poc
     except Exception as e:
         logger.error(f"POC plan generation failed: {e}")
-        raise HTTPException(status_code=502, detail="LLM unavailable")
+        raise HTTPException(status_code=502, detail=f"POC plan generation failed: {e}")
 
 @app.post("/api/v2/pipeline/{pipeline_id}/email")
 async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
@@ -318,7 +318,7 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
         return email
     except Exception as e:
         logger.error(f"Email generation failed: {e}")
-        raise HTTPException(status_code=502, detail="LLM unavailable")
+        raise HTTPException(status_code=502, detail=f"Email generation failed: {e}")
 
 @app.get("/api/v2/pipeline/{pipeline_id}/emails")
 async def get_pipeline_emails(pipeline_id: str):
@@ -367,7 +367,7 @@ async def generate_pitch_assets(pipeline_id: str, body: PitchRequest):
         return assets
     except Exception as e:
         logger.error(f"Pitch asset generation failed: {e}")
-        raise HTTPException(status_code=502, detail="LLM unavailable")
+        raise HTTPException(status_code=502, detail=f"Pitch generation failed: {e}")
 
 # --- feedback ---
 

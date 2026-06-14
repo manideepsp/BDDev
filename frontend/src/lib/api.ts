@@ -63,6 +63,9 @@ export interface OutreachEmail {
   sender_company: string;
   tone: string;
   created_at: string;
+  poc_summary?: string;
+  keywords_used?: string[];
+  personalization_hook?: string;
 }
 
 export interface Prospect {
