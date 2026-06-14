@@ -294,6 +294,110 @@ function SignalSections({ people, posts, jobs, removed, onToggle }: {
   );
 }
 
+function GatheredSummary({ gathered }: { gathered: NonNullable<Pipeline['gathered']> }) {
+  const websitePages = gathered.website?.pages ?? [];
+  const linkedinFields = gathered.linkedin?.company_fields ?? {};
+  const linkedinInfo = gathered.linkedin?.company_info;
+  const keywords = gathered.keywords?.keywords ?? [];
+  const productAreas = gathered.keywords?.product_areas ?? [];
+  const researchResults = gathered.research?.results ?? [];
+  const ragChunks = gathered.rag_chunks ?? 0;
+
+  const fieldEntries = Object.entries(linkedinFields).filter(([, v]) => v);
+
+  return (
+    <div className="space-y-3">
+      {/* Website */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+          🌐 Website <span className="text-slate-400 normal-case font-normal">
+            {websitePages.length > 0 ? `— ${websitePages.length} page(s) scraped` : '— not scraped'}
+            {gathered.website?.error ? ` (${gathered.website.error})` : ''}
+          </span>
+        </p>
+        {websitePages.length > 0 ? (
+          <div className="space-y-1">
+            {websitePages.map((pg, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0">page</span>
+                <span className="text-xs text-slate-600 truncate">{pg.title || pg.url}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">No pages scraped — synthesis will rely on other sources.</p>
+        )}
+      </div>
+
+      {/* LinkedIn company fields */}
+      {(fieldEntries.length > 0 || linkedinInfo) && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            💼 LinkedIn Company Profile
+            {gathered.linkedin?.error && <span className="text-amber-500 normal-case font-normal ml-1">(partial)</span>}
+          </p>
+          {fieldEntries.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
+              {fieldEntries.map(([k, v]) => (
+                <div key={k} className="bg-slate-50 rounded-lg p-2">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">{k}</p>
+                  <p className="text-xs font-medium text-slate-700 mt-0.5 truncate">{String(v)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {linkedinInfo && (
+            <p className="text-xs text-slate-600 line-clamp-3">{linkedinInfo.slice(0, 300)}{linkedinInfo.length > 300 ? '…' : ''}</p>
+          )}
+        </div>
+      )}
+
+      {/* Keywords */}
+      {(keywords.length > 0 || productAreas.length > 0) && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">🔑 Extracted Keywords</p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {keywords.map((kw, i) => (
+              <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600">{kw}</span>
+            ))}
+          </div>
+          {productAreas.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {productAreas.map((pa, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{pa}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Web research results */}
+      {researchResults.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            🔍 Web Research <span className="text-slate-400 normal-case font-normal">— {researchResults.length} results</span>
+          </p>
+          <div className="space-y-1">
+            {researchResults.slice(0, 6).map((r, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 flex-shrink-0 mt-0.5">{r.angle}</span>
+                <span className="text-xs text-slate-600 truncate">{r.title}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* RAG index summary */}
+      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+        <p className="text-xs text-indigo-700">
+          <span className="font-semibold">{ragChunks} chunks indexed</span> into the vector database — synthesis will retrieve the most relevant evidence via RAG queries.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ReviewPanel({ pipelineId, gathered, onContinued }: {
   pipelineId: string;
   gathered: NonNullable<Pipeline['gathered']>;
@@ -302,6 +406,7 @@ function ReviewPanel({ pipelineId, gathered, onContinued }: {
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const people = gathered.people?.people ?? [];
   const posts = gathered.posts?.posts ?? [];
   const jobs = gathered.jobs?.jobs ?? [];
@@ -316,32 +421,58 @@ function ReviewPanel({ pipelineId, gathered, onContinued }: {
 
   async function handleContinue() {
     setSubmitting(true);
+    setError('');
     try {
       await continuePipeline(pipelineId, {
         human_input: note.trim() || undefined,
         removed_people: Array.from(removed),
       });
       onContinued();
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to continue — please try again');
       setSubmitting(false);
     }
   }
 
   return (
     <div className="mb-8">
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-4">
-        <p className="text-sm font-semibold text-amber-800">✋ Review gathered intelligence</p>
+      {/* Header banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+        <p className="text-sm font-semibold text-amber-800">✋ Human checkpoint — review before synthesis</p>
         <p className="text-xs text-amber-700 mt-1">
-          The swarm gathered everything below and indexed it for RAG. Remove anyone irrelevant and add context —
-          then continue to RAG-grounded synthesis. {gathered.rag_chunks ? `${gathered.rag_chunks} chunks indexed.` : ''}
+          The swarm gathered and indexed everything below. Review what was found, remove irrelevant people,
+          and optionally add context that will be injected with high priority into the RAG synthesis.
         </p>
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          {[
+            ['🌐 + 💼', 'Website & LinkedIn', 'What the agents found about the company'],
+            ['🐝 + 📣 + 💼', 'People, Posts & Jobs', 'Remove noise; keep relevant contacts'],
+            ['✏️ Your context', 'Optional but impactful', 'Correct facts, add relationships, focus areas'],
+          ].map(([icon, label, desc]) => (
+            <div key={label} className="bg-white rounded-lg p-2.5 border border-amber-100">
+              <p className="text-[10px] font-medium text-amber-700">{icon} {label}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">{desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <SignalSections people={people} posts={posts} jobs={jobs} removed={removed} onToggle={toggle} />
+      {/* What was gathered */}
+      <div className="mb-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">What the agents gathered</p>
+        <GatheredSummary gathered={gathered} />
+      </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mt-4">
+      {/* People / posts / jobs (editable) */}
+      <div className="mb-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Signals — review &amp; prune</p>
+        <SignalSections people={people} posts={posts} jobs={jobs} removed={removed} onToggle={toggle} />
+      </div>
+
+      {/* Human context input + continue */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-          Add context for synthesis (optional)
+          Add context for synthesis <span className="text-slate-400 normal-case font-normal">(optional — highest priority in synthesis)</span>
         </label>
         <textarea
           value={note}
@@ -350,12 +481,18 @@ function ReviewPanel({ pipelineId, gathered, onContinued }: {
           placeholder="e.g. 'We already spoke to their VP Eng — focus on the data platform gap', or correct anything the agents got wrong..."
           className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
         />
+        {error && (
+          <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+            ⚠️ {error}
+          </div>
+        )}
         <div className="flex items-center gap-3 mt-3">
           <button onClick={handleContinue} disabled={submitting}
             className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-6 py-2.5 rounded-lg transition-colors">
-            {submitting ? 'Starting synthesis...' : '🧠 Continue to Insights →'}
+            {submitting ? '⏳ Starting synthesis...' : '🧠 Continue to Insights →'}
           </button>
           {removed.size > 0 && <span className="text-xs text-slate-500">{removed.size} person(s) excluded</span>}
+          <span className="text-xs text-slate-400 ml-auto">Nothing here blocks synthesis — continue when ready</span>
         </div>
       </div>
     </div>
@@ -368,6 +505,7 @@ export default function PipelinePage() {
   const router = useRouter();
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [loading, setLoading] = useState(true);
+  const [continued, setContinued] = useState(false);
 
   const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
 
@@ -390,7 +528,10 @@ export default function PipelinePage() {
   }, [fetchPipeline, pipeline?.status]);
 
   // Optimistically resume after the human checkpoint so polling restarts.
+  // `continued` guard prevents the ReviewPanel from re-appearing due to the
+  // race between the background task starting and the next poll.
   const handleContinued = useCallback(() => {
+    setContinued(true);
     setPipeline(prev => (prev ? { ...prev, status: 'insights' } : prev));
   }, []);
 
@@ -442,7 +583,7 @@ export default function PipelinePage() {
       )}
 
       {/* Human-in-the-loop review checkpoint */}
-      {pipeline.status === 'awaiting_input' && pipeline.gathered && (
+      {pipeline.status === 'awaiting_input' && !continued && pipeline.gathered && (
         <ReviewPanel pipelineId={id} gathered={pipeline.gathered} onContinued={handleContinued} />
       )}
 
