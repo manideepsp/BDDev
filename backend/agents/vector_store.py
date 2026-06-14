@@ -1,32 +1,19 @@
-import os, logging, json
+import logging, json
 from datetime import datetime
 from utils import pain_point_titles
+from agents.embedder import get_embedder, get_qdrant_client, embed_one, VECTOR_SIZE
 
 logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "nexus_bd_intelligence"
-VECTOR_SIZE = 384  # BAAI/bge-small-en-v1.5
 
 class VectorStoreAgent:
     def __init__(self):
-        self._ef = None
-        self._client = None
-        self._available = False
-        try:
-            from fastembed import TextEmbedding
-            from qdrant_client import QdrantClient
-            from qdrant_client.models import Distance, VectorParams
-            qdrant_url = os.getenv("QDRANT_URL")
-            qdrant_key = os.getenv("QDRANT_API_KEY")
-            if not qdrant_url:
-                logger.warning("QDRANT_URL not set; vector store disabled")
-                return
-            self._ef = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-            self._client = QdrantClient(url=qdrant_url, api_key=qdrant_key)
-            self._available = True
+        self._ef = get_embedder()
+        self._client = get_qdrant_client()
+        self._available = bool(self._ef and self._client)
+        if self._available:
             self.ensure_collection()
-        except Exception as e:
-            logger.warning(f"VectorStoreAgent unavailable: {e}")
 
     def ensure_collection(self):
         if not self._available:
@@ -56,8 +43,9 @@ class VectorStoreAgent:
                 f"{intelligence.get('business_model','')}. "
                 f"{' '.join(pains)}"
             )
-            embeddings = list(self._ef.embed([text]))
-            vector = embeddings[0].tolist()
+            vector = embed_one(text)
+            if vector is None:
+                return
             point = PointStruct(
                 id=pipeline_id,
                 vector=vector,

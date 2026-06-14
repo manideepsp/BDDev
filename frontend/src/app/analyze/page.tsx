@@ -4,11 +4,13 @@ import { useRouter } from 'next/navigation';
 import { startAnalysis } from '@/lib/api';
 
 const AGENT_STAGES = [
-  { icon: '🌐', label: 'Website Scraping', desc: 'Extracts content from the company website' },
-  { icon: '💼', label: 'LinkedIn Intelligence', desc: 'Finds key people and company info' },
-  { icon: '🔑', label: 'Keyword Extraction', desc: 'Identifies key themes and signals' },
-  { icon: '🔍', label: 'Web Research', desc: 'Searches for news, competitors, financials' },
-  { icon: '🧠', label: 'Insights & Prospects', desc: 'Synthesizes intelligence and identifies contacts' },
+  { icon: '🌐', label: 'Website + LinkedIn', desc: 'Scrapes site & LinkedIn company profile in parallel' },
+  { icon: '📣', label: 'Posts & Jobs', desc: 'Recent activity and open roles as BD signals' },
+  { icon: '🐝', label: 'People Swarm', desc: 'One agent per person — role, seniority, relevance' },
+  { icon: '🔍', label: 'Keywords & Research', desc: 'Distills themes, then targeted web research' },
+  { icon: '🗂️', label: 'RAG Indexing', desc: 'Embeds everything into the vector DB' },
+  { icon: '✋', label: 'Your Review', desc: 'Pause to review & add context before synthesis' },
+  { icon: '🧠', label: 'Insights & Prospects', desc: 'RAG-grounded intelligence + ICP + prospects' },
 ];
 
 export default function AnalyzePage() {
@@ -17,6 +19,7 @@ export default function AnalyzePage() {
     company_name: '', company_url: '', user_description: '',
     sender_name: '', sender_company: '',
     linkedin_url: '', deal_size: '', priority: '', notes: '',
+    post_lookback_months: 3, post_limit: 10,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -39,6 +42,8 @@ export default function AnalyzePage() {
         deal_size: form.deal_size || undefined,
         priority: form.priority || undefined,
         notes: form.notes || undefined,
+        post_lookback_months: form.post_lookback_months,
+        post_limit: form.post_limit,
       });
       router.push(`/pipeline/${pipeline_id}`);
     } catch (err) {
@@ -51,7 +56,7 @@ export default function AnalyzePage() {
     <div className="p-8 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">New Company Analysis</h1>
-        <p className="text-slate-500 mt-1 text-sm">5 AI agents will research the company and identify the best prospects to pitch.</p>
+        <p className="text-slate-500 mt-1 text-sm">A multi-agent swarm gathers intelligence, pauses for your review, then synthesizes RAG-grounded insights and prospects.</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Form */}
@@ -134,6 +139,26 @@ export default function AnalyzePage() {
                 placeholder="Any known context about this company (optional)..."
                 className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Posts lookback (months)</label>
+                <input
+                  type="number" min={1} max={24}
+                  value={form.post_lookback_months}
+                  onChange={e => setForm(f => ({...f, post_lookback_months: Math.max(1, Number(e.target.value) || 1)}))}
+                  className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Max posts</label>
+                <input
+                  type="number" min={1} max={50}
+                  value={form.post_limit}
+                  onChange={e => setForm(f => ({...f, post_limit: Math.max(1, Number(e.target.value) || 1)}))}
+                  className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

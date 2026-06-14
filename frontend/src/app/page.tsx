@@ -6,26 +6,36 @@ import { listPipelines, getStats, Pipeline, Stats } from '@/lib/api';
 
 const PIPELINE_STATUS_STYLES: Record<string, string> = {
   pending: 'bg-slate-100 text-slate-500',
-  scraping: 'bg-blue-100 text-blue-700',
-  linkedin: 'bg-indigo-100 text-indigo-700',
+  gathering: 'bg-blue-100 text-blue-700',
+  people: 'bg-indigo-100 text-indigo-700',
   keywords: 'bg-purple-100 text-purple-700',
   researching: 'bg-amber-100 text-amber-700',
+  indexing: 'bg-violet-100 text-violet-700',
+  awaiting_input: 'bg-amber-100 text-amber-800',
   insights: 'bg-orange-100 text-orange-700',
   embedding: 'bg-violet-100 text-violet-700',
   complete: 'bg-emerald-100 text-emerald-700',
   failed: 'bg-red-100 text-red-700',
+  // legacy
+  scraping: 'bg-blue-100 text-blue-700',
+  linkedin: 'bg-indigo-100 text-indigo-700',
 };
 
 const PIPELINE_STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
-  scraping: 'Scraping',
-  linkedin: 'LinkedIn',
+  gathering: 'Gathering',
+  people: 'People Swarm',
   keywords: 'Keywords',
   researching: 'Researching',
+  indexing: 'Indexing',
+  awaiting_input: 'Needs Review',
   insights: 'Insights',
   embedding: 'Embedding',
   complete: 'Complete',
   failed: 'Failed',
+  // legacy
+  scraping: 'Scraping',
+  linkedin: 'LinkedIn',
 };
 
 export default function Dashboard() {
