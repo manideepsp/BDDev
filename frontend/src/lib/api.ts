@@ -145,6 +145,49 @@ export interface AnalyzeRequest {
   deal_size?: string;
   priority?: string;
   notes?: string;
+  post_lookback_months?: number;
+  post_limit?: number;
+}
+
+export interface GatheredPost {
+  title: string;
+  text: string;
+  url: string;
+  source: string;
+}
+
+export interface GatheredJob {
+  title: string;
+  location: string;
+  url: string;
+  snippet: string;
+}
+
+export interface EnrichedPerson {
+  name: string;
+  title: string;
+  snippet?: string;
+  role_category?: string;
+  seniority?: string;
+  location?: string;
+  relevance?: string;
+  confidence?: 'high' | 'medium' | 'low';
+}
+
+export interface Gathered {
+  website?: { pages?: { url: string; title: string; text: string }[]; error?: string | null };
+  linkedin?: { company_info?: string; company_fields?: Record<string, unknown>; people?: EnrichedPerson[]; error?: string | null };
+  posts?: { posts: GatheredPost[]; lookback_months?: number; limit?: number; error?: string | null };
+  jobs?: { jobs: GatheredJob[]; error?: string | null };
+  people?: { people: EnrichedPerson[]; swarm_size?: number; error?: string | null };
+  keywords?: { keywords?: string[]; product_areas?: string[]; target_personas?: string[]; industry_tags?: string[]; tech_signals?: string[] };
+  research?: { results?: { title: string; url: string; snippet: string; angle: string }[]; error?: string | null };
+  rag_chunks?: number;
+}
+
+export interface ContinueRequest {
+  human_input?: string;
+  removed_people?: string[];
 }
 
 export interface PainPoint {
@@ -244,7 +287,9 @@ export interface Pipeline {
   deal_size?: string;
   priority?: string;
   notes?: string;
-  status: 'pending' | 'scraping' | 'linkedin' | 'keywords' | 'researching' | 'insights' | 'embedding' | 'complete' | 'failed';
+  status: 'pending' | 'gathering' | 'people' | 'keywords' | 'researching' | 'indexing' | 'awaiting_input' | 'insights' | 'embedding' | 'complete' | 'failed'
+    // legacy statuses (older pipelines)
+    | 'scraping' | 'linkedin';
   intelligence?: Omit<Research, 'key_people' | 'pain_points'> & {
     pain_points?: PainPoint[];
     tech_stack?: TechStack;
@@ -253,7 +298,11 @@ export interface Pipeline {
     grounded?: boolean;
     key_keywords?: string[];
     prospects?: PipelineProspect[];
+    people?: EnrichedPerson[];
+    posts?: GatheredPost[];
+    jobs?: GatheredJob[];
   };
+  gathered?: Gathered;
   prospects?: PipelineProspect[];
   error_message?: string;
   created_at: string;
@@ -305,6 +354,14 @@ export async function startAnalysis(data: AnalyzeRequest): Promise<{ pipeline_id
 
 export async function getPipeline(id: string): Promise<Pipeline> {
   return request(`/v2/pipeline/${id}`);
+}
+
+export async function continuePipeline(id: string, data: ContinueRequest): Promise<{ pipeline_id: string; status: string }> {
+  return request(`/api/v2/pipeline/${id}/continue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
 }
 
 export async function listPipelines(): Promise<Pipeline[]> {

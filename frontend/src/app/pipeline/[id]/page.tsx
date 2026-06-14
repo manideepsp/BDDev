@@ -2,13 +2,17 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPipeline, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack } from '@/lib/api';
+import { getPipeline, continuePipeline, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
+  EnrichedPerson, GatheredPost, GatheredJob } from '@/lib/api';
 
-const PIPELINE_STAGES = ['scraping', 'linkedin', 'keywords', 'researching', 'insights', 'embedding'] as const;
+const PIPELINE_STAGES = ['gathering', 'people', 'keywords', 'researching', 'indexing', 'awaiting_input', 'insights', 'embedding'] as const;
 const STAGE_LABELS: Record<string, string> = {
-  pending: 'Starting...', scraping: 'Scraping Website', linkedin: 'LinkedIn Intelligence',
-  keywords: 'Extracting Keywords', researching: 'Web Research',
-  insights: 'Generating Insights', embedding: 'Building Vector Index', complete: 'Complete',
+  pending: 'Starting...', gathering: 'Gathering Sources', people: 'People Swarm',
+  keywords: 'Extracting Keywords', researching: 'Web Research', indexing: 'RAG Indexing',
+  awaiting_input: 'Awaiting Review', insights: 'Generating Insights',
+  embedding: 'Building Vector Index', complete: 'Complete',
+  // legacy
+  scraping: 'Scraping Website', linkedin: 'LinkedIn Intelligence',
 };
 
 function StageTracker({ status }: { status: string }) {
@@ -202,6 +206,162 @@ function TechStackCard({ tech }: { tech: TechStack }) {
   );
 }
 
+function PeopleGrid({ people, removed, onToggle }: {
+  people: EnrichedPerson[]; removed?: Set<string>; onToggle?: (name: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {people.map((p, i) => {
+        const isRemoved = removed?.has(p.name);
+        return (
+          <div key={i} className={`bg-white rounded-xl border shadow-sm p-4 transition-colors ${
+            isRemoved ? 'border-slate-200 opacity-50' : 'border-slate-200'
+          }`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-900 text-sm truncate">{p.name}</p>
+                <p className="text-xs text-slate-500 truncate">{p.title}</p>
+              </div>
+              {onToggle && (
+                <button onClick={() => onToggle(p.name)}
+                  className={`text-xs px-2 py-1 rounded-md border flex-shrink-0 transition-colors ${
+                    isRemoved ? 'border-emerald-300 text-emerald-600' : 'border-slate-200 text-slate-400 hover:border-red-300 hover:text-red-500'
+                  }`}>
+                  {isRemoved ? 'Restore' : 'Remove'}
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {p.role_category && <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600">{p.role_category}</span>}
+              {p.seniority && p.seniority !== 'Unknown' && <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{p.seniority}</span>}
+              {p.location && p.location !== 'Unknown' && <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">📍 {p.location}</span>}
+              {p.confidence && <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-400">{p.confidence} conf.</span>}
+            </div>
+            {p.relevance && <p className="text-xs text-slate-600 mt-2">{p.relevance}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SignalSections({ people, posts, jobs, removed, onToggle }: {
+  people?: EnrichedPerson[]; posts?: GatheredPost[]; jobs?: GatheredJob[];
+  removed?: Set<string>; onToggle?: (name: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {(people ?? []).length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">
+            🐝 People <span className="text-slate-400 normal-case font-normal">— swarm-enriched ({people!.length})</span>
+          </p>
+          <PeopleGrid people={people!} removed={removed} onToggle={onToggle} />
+        </div>
+      )}
+      {(posts ?? []).length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">📣 Recent Posts & Activity</p>
+          <div className="space-y-2">
+            {posts!.slice(0, 8).map((post, i) => (
+              <a key={i} href={post.url} target="_blank" rel="noopener noreferrer"
+                 className="block bg-white rounded-lg border border-slate-200 shadow-sm p-3 hover:border-indigo-200 transition-colors">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{post.source}</span>
+                  {post.title && <span className="text-xs font-medium text-slate-700 truncate">{post.title}</span>}
+                </div>
+                <p className="text-xs text-slate-500 line-clamp-2">{post.text}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      {(jobs ?? []).length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">💼 Open Roles <span className="text-slate-400 normal-case font-normal">— hiring signals</span></p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {jobs!.slice(0, 10).map((job, i) => (
+              <a key={i} href={job.url} target="_blank" rel="noopener noreferrer"
+                 className="block bg-white rounded-lg border border-slate-200 shadow-sm p-3 hover:border-indigo-200 transition-colors">
+                <p className="text-xs font-medium text-slate-700 truncate">{job.title}</p>
+                {job.location && <p className="text-[10px] text-slate-400 mt-0.5">📍 {job.location}</p>}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewPanel({ pipelineId, gathered, onContinued }: {
+  pipelineId: string;
+  gathered: NonNullable<Pipeline['gathered']>;
+  onContinued: () => void;
+}) {
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const people = gathered.people?.people ?? [];
+  const posts = gathered.posts?.posts ?? [];
+  const jobs = gathered.jobs?.jobs ?? [];
+
+  function toggle(name: string) {
+    setRemoved(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
+
+  async function handleContinue() {
+    setSubmitting(true);
+    try {
+      await continuePipeline(pipelineId, {
+        human_input: note.trim() || undefined,
+        removed_people: Array.from(removed),
+      });
+      onContinued();
+    } catch {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mb-8">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-4">
+        <p className="text-sm font-semibold text-amber-800">✋ Review gathered intelligence</p>
+        <p className="text-xs text-amber-700 mt-1">
+          The swarm gathered everything below and indexed it for RAG. Remove anyone irrelevant and add context —
+          then continue to RAG-grounded synthesis. {gathered.rag_chunks ? `${gathered.rag_chunks} chunks indexed.` : ''}
+        </p>
+      </div>
+
+      <SignalSections people={people} posts={posts} jobs={jobs} removed={removed} onToggle={toggle} />
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mt-4">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+          Add context for synthesis (optional)
+        </label>
+        <textarea
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          rows={3}
+          placeholder="e.g. 'We already spoke to their VP Eng — focus on the data platform gap', or correct anything the agents got wrong..."
+          className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+        />
+        <div className="flex items-center gap-3 mt-3">
+          <button onClick={handleContinue} disabled={submitting}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-6 py-2.5 rounded-lg transition-colors">
+            {submitting ? 'Starting synthesis...' : '🧠 Continue to Insights →'}
+          </button>
+          {removed.size > 0 && <span className="text-xs text-slate-500">{removed.size} person(s) excluded</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PipelinePage() {
   const params = useParams();
   const id = params.id as string;
@@ -209,11 +369,13 @@ export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
+
   const fetchPipeline = useCallback(async () => {
     try {
       const p = await getPipeline(id);
       setPipeline(p);
-      if (p.status === 'complete' || p.status === 'failed') setLoading(false);
+      if (PAUSED(p.status)) setLoading(false);
     } catch {
       router.push('/');
     }
@@ -222,12 +384,15 @@ export default function PipelinePage() {
   useEffect(() => {
     fetchPipeline();
     const interval = setInterval(() => {
-      if (pipeline?.status !== 'complete' && pipeline?.status !== 'failed') {
-        fetchPipeline();
-      }
+      if (!PAUSED(pipeline?.status)) fetchPipeline();
     }, 2500);
     return () => clearInterval(interval);
   }, [fetchPipeline, pipeline?.status]);
+
+  // Optimistically resume after the human checkpoint so polling restarts.
+  const handleContinued = useCallback(() => {
+    setPipeline(prev => (prev ? { ...prev, status: 'insights' } : prev));
+  }, []);
 
   if (!pipeline) return (
     <div className="p-8 flex items-center gap-3 text-slate-500">
@@ -274,6 +439,11 @@ export default function PipelinePage() {
         <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-6 text-red-700">
           ⚠️ Pipeline failed: {pipeline.error_message ?? 'Unknown error'}
         </div>
+      )}
+
+      {/* Human-in-the-loop review checkpoint */}
+      {pipeline.status === 'awaiting_input' && pipeline.gathered && (
+        <ReviewPanel pipelineId={id} gathered={pipeline.gathered} onContinued={handleContinued} />
       )}
 
       {/* Intelligence sections */}
@@ -338,6 +508,9 @@ export default function PipelinePage() {
               <p className="text-sm text-indigo-800 leading-relaxed">{intel.recommended_approach}</p>
             </div>
           )}
+
+          {/* People swarm + posts + jobs signals */}
+          <SignalSections people={intel.people} posts={intel.posts} jobs={intel.jobs} />
 
           {/* Sources */}
           {(intel.sources ?? []).length > 0 && (

@@ -111,23 +111,33 @@ class InsightsAgent:
 
     def run(self, company_name: str, website_data: dict, linkedin_data: dict,
             keywords: dict, research_results: dict, user_description: str,
-            company_profile: dict | None = None, target_context: dict | None = None) -> dict:
-        context_parts = []
-        for page in website_data.get("pages", [])[:2]:
-            context_parts.append(f"WEBSITE: {page.get('text','')[:600]}")
-        if linkedin_data.get("company_info"):
-            context_parts.append(f"LINKEDIN: {linkedin_data['company_info'][:400]}")
-        for p in linkedin_data.get("people", []):
-            context_parts.append(f"PERSON FOUND: {p.get('name','')} - {p.get('title','')}")
-        for r in research_results.get("results", [])[:8]:
-            context_parts.append(f"[{r['angle'].upper()}] {r['title']}: {r['snippet']}")
-        context_parts.append(f"KEYWORDS: {json.dumps(keywords)}")
-        context = "\n\n".join(context_parts)[:4000]
+            company_profile: dict | None = None, target_context: dict | None = None,
+            rag_context: str | None = None) -> dict:
+        if rag_context:
+            # RAG-grounded: retrieved chunks are the primary evidence, but always
+            # include the people list explicitly so prospect identification works.
+            context_parts = [f"RETRIEVED EVIDENCE (most relevant chunks across all sources):\n{rag_context}"]
+            for p in linkedin_data.get("people", []) + research_results.get("people", []):
+                context_parts.append(f"PERSON FOUND: {p.get('name','')} - {p.get('title','')}")
+        else:
+            context_parts = []
+            for page in website_data.get("pages", [])[:2]:
+                context_parts.append(f"WEBSITE: {page.get('text','')[:600]}")
+            if linkedin_data.get("company_info"):
+                context_parts.append(f"LINKEDIN PROFILE:\n{linkedin_data['company_info'][:1400]}")
+            for p in linkedin_data.get("people", []):
+                context_parts.append(f"PERSON FOUND: {p.get('name','')} - {p.get('title','')}")
+            for r in research_results.get("results", [])[:8]:
+                context_parts.append(f"[{r['angle'].upper()}] {r['title']}: {r['snippet']}")
+            context_parts.append(f"KEYWORDS: {json.dumps(keywords)}")
+        context = "\n\n".join(context_parts)[:6000]
 
         target_context = target_context or {}
         target_block = ""
         if target_context.get("notes"):
             target_block += f"\nUSER NOTES ON TARGET: {target_context['notes']}"
+        if target_context.get("human_input"):
+            target_block += f"\nHUMAN REVIEWER INPUT (high priority — incorporate this): {target_context['human_input']}"
         if target_context.get("deal_size"):
             target_block += f"\nTARGET DEAL SIZE BAND: {target_context['deal_size']}"
 

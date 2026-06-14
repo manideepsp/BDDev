@@ -103,6 +103,12 @@ class AnalyzeRequest(BaseModel):
     deal_size: Optional[str] = None
     priority: Optional[str] = None
     notes: Optional[str] = None
+    post_lookback_months: int = 3
+    post_limit: int = 10
+
+class ContinueRequest(BaseModel):
+    human_input: Optional[str] = None
+    removed_people: List[str] = []
 
 class POCRequest(BaseModel):
     prospect_id: str
@@ -166,10 +172,14 @@ async def get_stats():
 
 # --- v2 pipeline endpoints ---
 
+def _target_context(body) -> dict:
+    return {"notes": getattr(body, "notes", None), "deal_size": getattr(body, "deal_size", None),
+            "priority": getattr(body, "priority", None), "linkedin_url": getattr(body, "linkedin_url", None)}
+
 @app.post("/api/v2/analyze")
 async def start_analysis(body: AnalyzeRequest):
     from db import create_pipeline, get_company_profile
-    from pipeline import run_pipeline
+    from pipeline import run_gathering_phase
     pipeline_id = str(uuid.uuid4())
     create_pipeline(
         pipeline_id, body.company_name, body.company_url,
@@ -177,15 +187,44 @@ async def start_analysis(body: AnalyzeRequest):
         body.linkedin_url, body.deal_size, body.priority, body.notes
     )
     company_profile = get_company_profile()
-    target_context = {"notes": body.notes, "deal_size": body.deal_size,
-                      "priority": body.priority, "linkedin_url": body.linkedin_url}
-    asyncio.create_task(run_pipeline(
+    asyncio.create_task(run_gathering_phase(
         pipeline_id, body.company_name, body.company_url,
         body.user_description, client,
-        company_profile=company_profile, target_context=target_context
+        company_profile=company_profile, target_context=_target_context(body),
+        post_lookback_months=body.post_lookback_months, post_limit=body.post_limit,
     ))
-    logger.info(f"Started pipeline {pipeline_id} for {body.company_name}")
+    logger.info(f"Started gathering for pipeline {pipeline_id} ({body.company_name})")
     return {"pipeline_id": pipeline_id, "status": "pending"}
+
+@app.post("/api/v2/pipeline/{pipeline_id}/continue")
+async def continue_pipeline(pipeline_id: str, body: ContinueRequest):
+    from db import get_pipeline as db_get_pipeline, get_company_profile, save_human_input, save_gathered
+    from pipeline import run_synthesis_phase
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if p.get("status") not in ("awaiting_input", "failed"):
+        raise HTTPException(status_code=409, detail=f"Pipeline is '{p.get('status')}', not ready to continue")
+
+    # Apply human edits: drop any people the reviewer removed
+    if body.removed_people:
+        gathered = p.get("gathered") or {}
+        people = gathered.get("people", {}).get("people", [])
+        kept = [pe for pe in people if pe.get("name") not in set(body.removed_people)]
+        gathered.setdefault("people", {})["people"] = kept
+        save_gathered(pipeline_id, gathered)
+
+    if body.human_input:
+        save_human_input(pipeline_id, body.human_input)
+
+    company_profile = get_company_profile()
+    target_context = {"notes": p.get("notes"), "deal_size": p.get("deal_size"),
+                      "priority": p.get("priority"), "linkedin_url": p.get("linkedin_url")}
+    asyncio.create_task(run_synthesis_phase(
+        pipeline_id, client, human_input=body.human_input,
+        company_profile=company_profile, target_context=target_context,
+    ))
+    return {"pipeline_id": pipeline_id, "status": "insights"}
 
 @app.get("/api/v2/pipeline/{pipeline_id}")
 async def get_pipeline(pipeline_id: str):

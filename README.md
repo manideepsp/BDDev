@@ -33,65 +33,63 @@ Nexus BD automates the entire pre-outreach research process using a **chain of s
 
 ## Multi-Agent Architecture
 
-The core of Nexus BD is an **8-agent sequential pipeline**. Each agent owns one concern, produces a structured output, and hands it forward. No single LLM call has to do everything — each step builds on real data from the previous one.
+The core of Nexus BD is a **multi-phase agent pipeline** with a human-in-the-loop checkpoint and RAG-grounded synthesis. Gathering agents run **concurrently**, every signal is **embedded into a per-pipeline vector index**, the run **pauses for human review**, and only then does the system synthesize intelligence by **retrieving** the most relevant evidence (classic retrieve-then-synthesize RAG).
 
 ```
-User input
+User input (+ post lookback config)
     │
     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         ANALYSIS PIPELINE                           │
+│  PHASE 1 — GATHER  (agents run concurrently)                        │
 │                                                                     │
-│  Agent 1 — Website Scraper                                          │
-│  • Fetches homepage + up to 3 subpages (/about, /products, /team)  │
-│  • Extracts clean text; falls back to DDG if no URL provided        │
-│  • Output: structured page content                                  │
+│  Website Scraper      • homepage + /about, /products, /team         │
+│  LinkedIn Intel       • JSON-LD org schema → industry, size,        │
+│                         founded, HQ, followers, overview, founders   │
+│  Posts Agent          • recent activity/announcements (configurable  │
+│                         lookback months / max posts)                 │
+│  Jobs Agent           • open roles as hiring/tech signals            │
 │                       │                                             │
-│  Agent 2 — LinkedIn Intelligence                                    │
-│  • Scrapes public company page                                      │
-│  • DDG-searches for "{company} CEO OR CTO site:linkedin.com/in"    │
-│  • Output: company summary + people list with titles               │
+│  People Swarm 🐝  • discovers people, then fans out ONE enrichment   │
+│   (asyncio.gather)   agent PER PERSON in parallel → role category,   │
+│                      seniority, location, BD relevance (capped)      │
 │                       │                                             │
-│  Agent 3 — Keyword Extraction                (Groq LLM)            │
-│  • Distils scraped text + user description into structured signals  │
-│  • Output: keywords, product areas, target personas, tech signals   │
+│  Keyword Extraction (LLM) → Web Research (DDG/Tavily)               │
 │                       │                                             │
-│  Agent 4 — Web Research                                             │
-│  • Runs 4 targeted searches: news, competitive, financial, market   │
-│  • Uses DuckDuckGo (or Tavily for higher quality)                   │
-│  • Output: up to 16 grounded results with source URLs              │
-│                       │                                             │
-│  Agent 5 — Insights Synthesis                (Groq LLM)            │
-│  • Combines all gathered data into a full intelligence report       │
-│  • Identifies 2–4 prospects with relevance + contact angles        │
-│  • Scores engagement likelihood 1–100 with reasoning               │
-│                       │                                             │
-│  Agent 6 — POC Plan                          (Groq LLM)            │
-│  • Generates a proof-of-concept engagement plan per prospect        │
-│  • Output: objective, approach, timeline, talking points, risks     │
-│                       │                                             │
-│  Agent 7 — Email Generator                   (Groq LLM)            │
-│  • Writes a personalised outreach email using all extracted signals │
-│  • Tone: Professional / Conversational / Bold                       │
-│  • Output: subject, body, follow-up, keywords used                 │
-│                       │                                             │
-│  Agent 8 — Vector Store                      (fastembed + Qdrant)  │
-│  • Embeds company intelligence (BAAI/bge-small-en-v1.5, 384 dims)  │
-│  • Stores in Qdrant Cloud for cumulative market analysis            │
-│  • Powers the Market Trends view: cross-company cluster insights    │
+│  RAG Indexer       • chunks + embeds ALL gathered data into a        │
+│   (fastembed)        per-pipeline Qdrant namespace                   │
 └─────────────────────────────────────────────────────────────────────┘
+    │
+    ▼  ⏸  AWAITING_INPUT — pipeline pauses
+┌─────────────────────────────────────────────────────────────────────┐
+│  HUMAN CHECKPOINT — reviewer sees posts/jobs/people, removes         │
+│  irrelevant people, adds free-text context, then clicks Continue     │
+└─────────────────────────────────────────────────────────────────────┘
+    │
+    ▼  (resume)
+┌─────────────────────────────────────────────────────────────────────┐
+│  PHASE 2 — SYNTHESIZE                                               │
+│                                                                     │
+│  RAG Retrieval (LLM-built queries) → retrieve top chunks per query  │
+│  Insights Synthesis (LLM)  • evidence-first pain points, tech-stack  │
+│                              signals, ICP match score, prospects     │
+│  Vector Store (fastembed + Qdrant) • embeds the company into the     │
+│                              cumulative market-trends collection     │
+└─────────────────────────────────────────────────────────────────────┘
+    │
+    ▼  per-prospect, on demand:  POC Plan · Email Generator · Pitch Bundle
 ```
 
 **Key design choices:**
 
-- **Graceful degradation everywhere** — if LinkedIn scraping fails, the pipeline continues with empty LinkedIn data. If Qdrant is unreachable, embedding is skipped and the pipeline still completes. No single agent failure kills the run.
-- **Non-blocking execution** — the pipeline runs in a background `asyncio` task. The frontend polls every 2.5 seconds, showing live stage progress as each agent completes.
-- **Grounded intelligence** — the insights agent is explicitly told which sources it has and attaches real URLs. The UI marks reports as "Live web data" vs "AI-estimated" based on whether live search results were found.
-- **Cumulative memory** — every completed pipeline embeds its intelligence into Qdrant. The Market Trends page clusters all researched companies by industry and surfaces cross-portfolio BD opportunities automatically.
+- **Concurrent gathering** — website, LinkedIn, posts, and jobs agents run together via `asyncio.gather`; the People stage is a true **agent swarm**, one enrichment agent per person running in parallel.
+- **Human-in-the-loop** — the pipeline persists everything it gathered and enters `awaiting_input`. The reviewer prunes people and injects context that is fed into synthesis with high priority. Resumed via `POST /api/v2/pipeline/{id}/continue`.
+- **RAG-grounded synthesis** — instead of stuffing truncated raw blobs into one prompt, all evidence is embedded into a per-pipeline namespace; the synthesis step asks the LLM what to look for, embeds those queries, and retrieves the best-matching chunks.
+- **Graceful degradation everywhere** — any walled/empty source (LinkedIn, posts, jobs, Qdrant) is skipped without killing the run. If vectors are unavailable, synthesis falls back to direct context.
+- **Cumulative memory** — every completed pipeline also embeds into the shared `nexus_bd_intelligence` collection that powers the Market Trends view.
 
 ### LLM
 
-All LLM calls use **Groq** (`llama-3.3-70b-versatile`), chosen for its free tier and low latency. The pipeline makes 4 LLM calls total per company (keyword extraction, insights, POC plan, email) plus one for each market trend cluster.
+All LLM calls use **Groq** (`llama-3.3-70b-versatile`), chosen for its free tier and low latency. Per company the pipeline makes: keyword extraction, one enrichment call per person (parallel), RAG query planning, insights synthesis — plus POC plan / email / pitch on demand, and one call per market-trend cluster.
 
 ---
 
@@ -130,14 +128,20 @@ BDDev/
 │   ├── pipeline.py           # Async orchestrator + market trends generator
 │   ├── utils.py              # extract_json() — shared JSON parsing helper
 │   ├── agents/
-│   │   ├── scraper.py        # Agent 1 — website scraper
-│   │   ├── linkedin.py       # Agent 2 — LinkedIn intelligence
-│   │   ├── keywords.py       # Agent 3 — keyword extraction (LLM)
-│   │   ├── researcher.py     # Agent 4 — web research
-│   │   ├── insights.py       # Agent 5 — insights synthesis (LLM)
-│   │   ├── poc_plan.py       # Agent 6 — POC plan (LLM)
-│   │   ├── email_gen.py      # Agent 7 — email generator (LLM)
-│   │   └── vector_store.py   # Agent 8 — fastembed + Qdrant
+│   │   ├── scraper.py        # website scraper
+│   │   ├── linkedin.py       # LinkedIn intelligence (JSON-LD org schema)
+│   │   ├── posts.py          # recent posts / activity (configurable range)
+│   │   ├── jobs.py           # open roles → hiring signals
+│   │   ├── people.py         # people swarm — parallel per-person enrichment
+│   │   ├── keywords.py       # keyword extraction (LLM)
+│   │   ├── researcher.py     # web research
+│   │   ├── rag.py            # RAG indexer + retriever (LLM-built queries)
+│   │   ├── embedder.py       # shared fastembed + Qdrant singletons
+│   │   ├── insights.py       # RAG-grounded insights synthesis (LLM)
+│   │   ├── poc_plan.py       # POC plan (LLM)
+│   │   ├── email_gen.py      # email generator (LLM)
+│   │   ├── pitch.py          # full pitch-asset bundle (LLM)
+│   │   └── vector_store.py   # cumulative market-trends store (fastembed + Qdrant)
 │   ├── Dockerfile
 │   ├── fly.toml
 │   └── requirements.txt
@@ -165,8 +169,9 @@ BDDev/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v2/analyze` | Start an analysis pipeline (async) |
-| GET | `/api/v2/pipeline/{id}` | Poll status + results |
+| POST | `/api/v2/analyze` | Start an analysis pipeline (async, runs gather phase) |
+| GET | `/api/v2/pipeline/{id}` | Poll status + gathered data + results |
+| POST | `/api/v2/pipeline/{id}/continue` | Resume after the human checkpoint (human input + removed people) |
 | GET | `/api/v2/pipelines` | List all pipelines |
 | GET | `/api/v2/pipeline/{id}/prospects` | Get identified prospects |
 | POST | `/api/v2/pipeline/{id}/poc-plan` | Generate POC plan for a prospect |

@@ -78,6 +78,8 @@ _PIPELINE_EXTRA_COLUMNS = {
     "deal_size": "TEXT",
     "priority": "TEXT",
     "notes": "TEXT",
+    "gathered_json": "TEXT",
+    "human_input": "TEXT",
 }
 _ALLOWED_COL_TYPES = {"TEXT", "INTEGER", "REAL"}
 
@@ -120,20 +122,47 @@ def get_pipeline(id):
         d = dict(row)
         if d.get("intelligence_json"):
             d["intelligence"] = json.loads(d["intelligence_json"])
-        del d["intelligence_json"]
+        d.pop("intelligence_json", None)
+        if d.get("gathered_json"):
+            try:
+                d["gathered"] = json.loads(d["gathered_json"])
+            except Exception:
+                d["gathered"] = None
+        d.pop("gathered_json", None)
         return d
 
 def list_pipelines():
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM pipelines ORDER BY created_at DESC").fetchall()
+        rows = conn.execute(
+            "SELECT id,company_name,company_url,status,intelligence_json,error_message,created_at,"
+            "deal_size,priority FROM pipelines ORDER BY created_at DESC").fetchall()
         result = []
         for row in rows:
             d = dict(row)
             if d.get("intelligence_json"):
                 d["intelligence"] = json.loads(d["intelligence_json"])
-            del d["intelligence_json"]
+            d.pop("intelligence_json", None)
             result.append(d)
         return result
+
+def save_gathered(id, gathered: dict):
+    with get_conn() as conn:
+        conn.execute("UPDATE pipelines SET gathered_json=? WHERE id=?",
+                     (json.dumps(gathered), id))
+
+def get_gathered(id):
+    with get_conn() as conn:
+        row = conn.execute("SELECT gathered_json FROM pipelines WHERE id=?", (id,)).fetchone()
+        if not row or not row[0]:
+            return None
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
+
+def save_human_input(id, text):
+    with get_conn() as conn:
+        conn.execute("UPDATE pipelines SET human_input=? WHERE id=?", (text, id))
 
 def save_prospects(pipeline_id, prospects):
     with get_conn() as conn:
