@@ -301,6 +301,8 @@ function GatheredSummary({ gathered }: { gathered: NonNullable<Pipeline['gathere
   const keywords = gathered.keywords?.keywords ?? [];
   const productAreas = gathered.keywords?.product_areas ?? [];
   const researchResults = gathered.research?.results ?? [];
+  const crawlFindings = gathered.crawl?.findings ?? [];
+  const crawlByType = gathered.crawl?.by_type ?? {};
   const ragChunks = gathered.rag_chunks ?? 0;
 
   const fieldEntries = Object.entries(linkedinFields).filter(([, v]) => v);
@@ -383,6 +385,35 @@ function GatheredSummary({ gathered }: { gathered: NonNullable<Pipeline['gathere
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 flex-shrink-0 mt-0.5">{r.angle}</span>
                 <span className="text-xs text-slate-600 truncate">{r.title}</span>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Open-web crawl */}
+      {crawlFindings.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+            🕸️ Open-Web Crawl <span className="text-slate-400 normal-case font-normal">
+              — {gathered.crawl?.pages_crawled ?? 0} pages crawled of {gathered.crawl?.discovered ?? crawlFindings.length} found
+            </span>
+          </p>
+          {Object.keys(crawlByType).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {Object.entries(crawlByType).map(([type, count]) => (
+                <span key={type} className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                  {type} · {count}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="space-y-1.5">
+            {crawlFindings.slice(0, 10).map((f, i) => (
+              <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
+                 className="flex items-start gap-2 hover:text-indigo-600 transition-colors group">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 flex-shrink-0 mt-0.5">{f.source_type}</span>
+                <span className="text-xs text-slate-600 truncate group-hover:text-indigo-600">{f.title || f.url}</span>
+              </a>
             ))}
           </div>
         </div>
