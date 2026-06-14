@@ -72,18 +72,25 @@ def init_db():
 
 
 # Lightweight migration: add target-context columns to existing pipelines tables.
+# Both identifiers and types are fixed, trusted constants (never user input).
 _PIPELINE_EXTRA_COLUMNS = {
     "linkedin_url": "TEXT",
     "deal_size": "TEXT",
     "priority": "TEXT",
     "notes": "TEXT",
 }
+_ALLOWED_COL_TYPES = {"TEXT", "INTEGER", "REAL"}
 
 def _ensure_columns(conn):
     existing = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
     for col, coltype in _PIPELINE_EXTRA_COLUMNS.items():
-        if col not in existing:
-            conn.execute(f"ALTER TABLE pipelines ADD COLUMN {col} {coltype}")
+        if col in existing:
+            continue
+        # Defensive validation: SQLite cannot bind DDL identifiers/types as
+        # parameters, so guard against anything that isn't a plain identifier.
+        if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
+            raise ValueError(f"Unsafe column definition: {col} {coltype}")
+        conn.execute(f"ALTER TABLE pipelines ADD COLUMN {col} {coltype}")  # nosec B608
 
 def create_pipeline(id, company_name, company_url, user_description, sender_name=None, sender_company=None,
                     linkedin_url=None, deal_size=None, priority=None, notes=None):

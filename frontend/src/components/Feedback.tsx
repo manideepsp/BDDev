@@ -17,7 +17,6 @@ export default function Feedback({ outputType, pipelineId, prospectId, outputId,
   const [saved, setSaved] = useState(false);
 
   async function send(value: number, withNote?: string) {
-    setRating(value);
     const payload: FeedbackRequest = {
       output_type: outputType,
       pipeline_id: pipelineId,
@@ -28,6 +27,10 @@ export default function Feedback({ outputType, pipelineId, prospectId, outputId,
     };
     try {
       await submitFeedback(payload);
+      // Only reflect the rating once the backend has actually stored it,
+      // so the UI never shows feedback that wasn't saved.
+      setRating(value);
+      setShowNote(false);
       setSaved(true);
     } catch {
       /* non-blocking — feedback is best-effort */
@@ -38,7 +41,7 @@ export default function Feedback({ outputType, pipelineId, prospectId, outputId,
     <div className="flex items-center gap-2 text-xs text-slate-400">
       {label && <span className="mr-1">{label}</span>}
       <button
-        onClick={() => { send(5); setShowNote(false); }}
+        onClick={() => send(5)}
         className={`px-2 py-1 rounded-md border transition-colors ${
           rating === 5 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'border-slate-200 hover:border-emerald-300'
         }`}
@@ -47,7 +50,7 @@ export default function Feedback({ outputType, pipelineId, prospectId, outputId,
         👍
       </button>
       <button
-        onClick={() => { setRating(1); setShowNote(true); }}
+        onClick={() => setShowNote(true)}
         className={`px-2 py-1 rounded-md border transition-colors ${
           rating === 1 ? 'bg-red-100 text-red-700 border-red-200' : 'border-slate-200 hover:border-red-300'
         }`}
