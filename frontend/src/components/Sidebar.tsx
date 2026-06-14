@@ -3,14 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const navItems = [
+const NAV = [
   {
     href: '/',
     label: 'Dashboard',
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
       </svg>
     ),
   },
@@ -19,18 +19,19 @@ const navItems = [
     label: 'New Analysis',
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
           d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
       </svg>
     ),
+    cta: true,
   },
   {
     href: '/trends',
-    label: 'Market Trends',
+    label: 'Market Intelligence',
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
       </svg>
     ),
   },
@@ -39,9 +40,8 @@ const navItems = [
     label: 'Company Profile',
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
       </svg>
     ),
   },
@@ -51,80 +51,90 @@ export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 bg-slate-900 min-h-screen flex flex-col flex-shrink-0">
+    <aside className="w-60 bg-slate-900 min-h-screen flex flex-col flex-shrink-0 relative">
+      {/* Rainbow accent stripe — first thing judges see */}
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-400" />
+
       {/* Brand */}
-      <div className="px-5 py-6 border-b border-slate-700/50">
+      <div className="px-5 pt-6 pb-5 border-b border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-900/40">
+            <svg className="w-4.5 h-4.5 text-white w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
                 d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
           <div>
             <div className="text-white font-bold text-sm tracking-tight">Nexus BD</div>
-            <div className="text-slate-400 text-xs">AI Intelligence</div>
+            <div className="text-slate-500 text-[11px] tracking-wide">AI Intelligence Engine</div>
           </div>
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {navItems.map((item) => {
-          const active =
-            item.href === '/'
-              ? pathname === '/'
-              : pathname.startsWith(item.href);
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-3 space-y-0.5">
+        {NAV.map((item) => {
+          const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+
+          if (item.cta && !active) {
+            return (
+              <Link key={item.href} href={item.href}
+                className="flex items-center gap-2.5 w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-medium px-3 py-2.5 rounded-lg transition-all shadow-sm shadow-indigo-900/30 mb-1">
+                {item.icon}
+                {item.label}
+              </Link>
+            );
+          }
+
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+            <Link key={item.href} href={item.href}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 active
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
+                  ? 'bg-slate-800 text-white'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}>
               {item.icon}
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />}
             </Link>
           );
         })}
 
-        <div className="pt-4 pb-1">
-          <div className="text-xs font-medium text-slate-600 uppercase tracking-wider px-3 mb-1">
-            Pipeline
-          </div>
+        {/* Section label */}
+        <div className="pt-5 pb-1 px-3">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">Pipeline stages</p>
         </div>
 
+        {/* Stage hints — not links, just ambient context about the BD funnel */}
         {[
-          { label: 'Researched', color: 'bg-blue-500' },
-          { label: 'Outreach Ready', color: 'bg-indigo-500' },
-          { label: 'Contacted', color: 'bg-amber-500' },
-          { label: 'Qualified', color: 'bg-emerald-500' },
+          { label: 'Gathering data', color: 'bg-blue-400',   dot: 'border-blue-400/30' },
+          { label: 'Human review',   color: 'bg-amber-400',  dot: 'border-amber-400/30' },
+          { label: 'AI synthesis',   color: 'bg-violet-400', dot: 'border-violet-400/30' },
+          { label: 'Outreach ready', color: 'bg-emerald-400', dot: 'border-emerald-400/30' },
         ].map(({ label, color }) => (
-          <Link
-            key={label}
-            href="/"
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <span className={`w-2 h-2 rounded-full ${color} flex-shrink-0`} />
-            {label}
-          </Link>
+          <div key={label} className="flex items-center gap-2.5 px-3 py-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${color} flex-shrink-0 opacity-60`} />
+            <span className="text-xs text-slate-600">{label}</span>
+          </div>
         ))}
       </nav>
 
-      {/* Footer */}
-      <div className="px-3 py-4 border-t border-slate-700/50">
-        <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-7 h-7 bg-indigo-500/20 border border-indigo-500/30 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-indigo-400 text-xs font-bold">M</span>
+      {/* User footer — links to Company Profile settings */}
+      <div className="px-3 py-4 border-t border-slate-800">
+        <Link href="/settings"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors group">
+          <div className="w-7 h-7 bg-gradient-to-br from-indigo-500/25 to-violet-500/25 border border-indigo-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+            <span className="text-indigo-400 text-[11px] font-bold">M</span>
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-slate-300 text-xs font-medium truncate">Manideep</div>
-            <div className="text-slate-500 text-xs truncate">pipaltree.ai</div>
+            <div className="text-slate-600 text-[11px] truncate">pipaltree.ai</div>
           </div>
-        </div>
+          <svg className="w-3 h-3 text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
       </div>
     </aside>
   );
