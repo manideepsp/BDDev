@@ -22,14 +22,16 @@ async def run_gathering_phase(pipeline_id: str, company_name: str, company_url: 
     from agents.people import PeopleSwarmAgent
     from agents.keywords import KeywordExtractionAgent
     from agents.researcher import WebResearchAgent
+    from agents.crawler import WebCrawlerAgent
     from agents.rag import RAGIndexAgent
 
     try:
         # --- Concurrent gather: website, linkedin, posts, jobs run in parallel ---
         update_pipeline_status(pipeline_id, "gathering")
+        linkedin_url = (target_context or {}).get("linkedin_url")
         scraper_result, linkedin_result, posts_result, jobs_result = await asyncio.gather(
             _to_thread(lambda: WebsiteScraperAgent().run(company_name, company_url)),
-            _to_thread(lambda: LinkedInAgent().run(company_name)),
+            _to_thread(lambda: LinkedInAgent().run(company_name, linkedin_url)),
             _to_thread(lambda: LinkedInPostsAgent().run(company_name, post_lookback_months, post_limit)),
             _to_thread(lambda: JobsAgent().run(company_name, company_url)),
         )
@@ -47,8 +49,14 @@ async def run_gathering_phase(pipeline_id: str, company_name: str, company_url: 
         keywords = await _to_thread(lambda: KeywordExtractionAgent(groq_client).run(
             scraper_result, linkedin_result, user_description, company_name))
 
+        # Targeted research + broad open-web crawl run concurrently.
         update_pipeline_status(pipeline_id, "researching")
-        research = await _to_thread(lambda: WebResearchAgent().run(company_name, keywords, company_url))
+        research, crawl = await asyncio.gather(
+            _to_thread(lambda: WebResearchAgent().run(company_name, keywords, company_url)),
+            _to_thread(lambda: WebCrawlerAgent().run(company_name, company_url, keywords)),
+        )
+        logger.info(f"[{pipeline_id}] crawl: {crawl.get('pages_crawled',0)} pages across "
+                    f"{len(crawl.get('by_type',{}))} source types")
 
         gathered = {
             "website": scraper_result,
@@ -58,6 +66,7 @@ async def run_gathering_phase(pipeline_id: str, company_name: str, company_url: 
             "people": people_result,
             "keywords": keywords,
             "research": research,
+            "crawl": crawl,
         }
 
         # --- Index everything into the per-pipeline RAG namespace ---

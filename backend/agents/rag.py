@@ -117,6 +117,10 @@ class RAGIndexAgent:
         for r in gathered.get("research", {}).get("results", []):
             add(f"research:{r.get('angle','web')}", f"{r.get('title','')}. {r.get('snippet','')}")
 
+        for f in gathered.get("crawl", {}).get("findings", []):
+            body = f.get("content") or f.get("snippet", "")
+            add(f"web:{f.get('source_type','web')}", f"{f.get('title','')}. {body}")
+
         kw = gathered.get("keywords", {})
         if kw:
             add("keywords", json.dumps(kw))

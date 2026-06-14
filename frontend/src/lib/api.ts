@@ -76,7 +76,10 @@ export interface Prospect {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, options);
+  // Some callers pass paths already prefixed with `/api` (v2 endpoints); others
+  // pass bare paths (legacy endpoints). Normalize so we never double the prefix.
+  const url = path.startsWith('/api') ? path : `${API_BASE}${path}`;
+  const res = await fetch(url, options);
   if (!res.ok) {
     const text = await res.text();
 
@@ -182,7 +185,23 @@ export interface Gathered {
   people?: { people: EnrichedPerson[]; swarm_size?: number; error?: string | null };
   keywords?: { keywords?: string[]; product_areas?: string[]; target_personas?: string[]; industry_tags?: string[]; tech_signals?: string[] };
   research?: { results?: { title: string; url: string; snippet: string; angle: string }[]; error?: string | null };
+  crawl?: {
+    findings?: CrawlFinding[];
+    by_type?: Record<string, number>;
+    pages_crawled?: number;
+    discovered?: number;
+    error?: string | null;
+  };
   rag_chunks?: number;
+}
+
+export interface CrawlFinding {
+  title: string;
+  url: string;
+  snippet: string;
+  content?: string;
+  source_type: string;
+  query_angle: string;
 }
 
 export interface ContinueRequest {
