@@ -109,6 +109,8 @@ class AnalyzeRequest(BaseModel):
 class ContinueRequest(BaseModel):
     human_input: Optional[str] = None
     removed_people: List[str] = []
+    # Indices of items to exclude per source: {"posts": [0,2], "jobs": [1], "crawl": [3]}
+    excluded_items: dict = {}
 
 class POCRequest(BaseModel):
     prospect_id: str
@@ -206,12 +208,34 @@ async def continue_pipeline(pipeline_id: str, body: ContinueRequest):
     if p.get("status") not in ("awaiting_input", "failed"):
         raise HTTPException(status_code=409, detail=f"Pipeline is '{p.get('status')}', not ready to continue")
 
-    # Apply human edits: drop any people the reviewer removed
+    # Apply human edits: filter removed people and rejected items
+    gathered = p.get("gathered") or {}
+    changed = False
     if body.removed_people:
-        gathered = p.get("gathered") or {}
         people = gathered.get("people", {}).get("people", [])
         kept = [pe for pe in people if pe.get("name") not in set(body.removed_people)]
         gathered.setdefault("people", {})["people"] = kept
+        changed = True
+    if body.excluded_items:
+        for source, indices in body.excluded_items.items():
+            idx_set = set(indices)
+            if source == "posts":
+                items = gathered.get("posts", {}).get("posts", [])
+                gathered.setdefault("posts", {})["posts"] = [it for i, it in enumerate(items) if i not in idx_set]
+                changed = True
+            elif source == "jobs":
+                items = gathered.get("jobs", {}).get("jobs", [])
+                gathered.setdefault("jobs", {})["jobs"] = [it for i, it in enumerate(items) if i not in idx_set]
+                changed = True
+            elif source == "crawl":
+                items = gathered.get("crawl", {}).get("findings", [])
+                gathered.setdefault("crawl", {})["findings"] = [it for i, it in enumerate(items) if i not in idx_set]
+                changed = True
+            elif source == "research":
+                items = gathered.get("research", {}).get("results", [])
+                gathered.setdefault("research", {})["results"] = [it for i, it in enumerate(items) if i not in idx_set]
+                changed = True
+    if changed:
         save_gathered(pipeline_id, gathered)
 
     if body.human_input:

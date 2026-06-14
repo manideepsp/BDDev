@@ -1,4 +1,5 @@
 import json, logging
+from datetime import datetime
 from utils import extract_json
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,10 @@ class InsightsAgent:
         if target_context.get("deal_size"):
             target_block += f"\nTARGET DEAL SIZE BAND: {target_context['deal_size']}"
 
+        today = datetime.now().strftime("%Y-%m-%d")
         prompt = f"""You are a world-class BD strategist for an IT services / software vendor. Synthesize the data below into a structured, EVIDENCE-FIRST intelligence report. Every pain point MUST be anchored to concrete evidence from the gathered data — never invent facts. If evidence is weak, lower the confidence. Identify specific prospects (people to pitch to).
+
+TODAY'S DATE: {today} — use this to judge recency of information and events.
 
 COMPANY: {company_name}
 USER'S OFFERING (free text): {user_description}{target_block}

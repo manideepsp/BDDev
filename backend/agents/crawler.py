@@ -12,6 +12,7 @@ page fetches themselves fan out via a small thread pool so the crawl stays fast.
 """
 import os, logging, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from urllib.parse import urlparse
 
 import requests
@@ -102,9 +103,10 @@ class WebCrawlerAgent:
 
     def _discover(self, company_name: str, domain: str | None, keywords: dict) -> list[dict]:
         kw = " ".join((keywords.get("keywords") or [])[:3])
+        year = datetime.now().year
         queries: list[tuple[str, str]] = [
             (f'"{company_name}" company overview', "profile"),
-            (f"{company_name} news 2025 OR 2026", "news"),
+            (f"{company_name} news {year} OR {year - 1}", "news"),
             (f"{company_name} funding OR investors OR raised", "funding"),
             (f"{company_name} founders OR leadership OR executives", "leadership"),
             (f"{company_name} customers OR case study OR clients", "customers"),

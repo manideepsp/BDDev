@@ -32,7 +32,7 @@ async def run_gathering_phase(pipeline_id: str, company_name: str, company_url: 
         scraper_result, linkedin_result, posts_result, jobs_result = await asyncio.gather(
             _to_thread(lambda: WebsiteScraperAgent().run(company_name, company_url)),
             _to_thread(lambda: LinkedInAgent().run(company_name, linkedin_url)),
-            _to_thread(lambda: LinkedInPostsAgent().run(company_name, post_lookback_months, post_limit)),
+            _to_thread(lambda: LinkedInPostsAgent().run(company_name, post_lookback_months, post_limit, company_url)),
             _to_thread(lambda: JobsAgent().run(company_name, company_url)),
         )
         logger.info(f"[{pipeline_id}] gathered: {len(scraper_result.get('pages',[]))} pages, "

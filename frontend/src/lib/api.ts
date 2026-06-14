@@ -157,6 +157,7 @@ export interface GatheredPost {
   text: string;
   url: string;
   source: string;
+  date?: string;
 }
 
 export interface GatheredJob {
@@ -180,7 +181,7 @@ export interface EnrichedPerson {
 export interface Gathered {
   website?: { pages?: { url: string; title: string; text: string }[]; error?: string | null };
   linkedin?: { company_info?: string; company_fields?: Record<string, unknown>; people?: EnrichedPerson[]; error?: string | null };
-  posts?: { posts: GatheredPost[]; lookback_months?: number; limit?: number; error?: string | null };
+  posts?: { posts: GatheredPost[]; lookback_months?: number; limit?: number; as_of?: string; error?: string | null };
   jobs?: { jobs: GatheredJob[]; error?: string | null };
   people?: { people: EnrichedPerson[]; swarm_size?: number; error?: string | null };
   keywords?: { keywords?: string[]; product_areas?: string[]; target_personas?: string[]; industry_tags?: string[]; tech_signals?: string[] };
@@ -207,6 +208,7 @@ export interface CrawlFinding {
 export interface ContinueRequest {
   human_input?: string;
   removed_people?: string[];
+  excluded_items?: Record<string, number[]>;  // {"posts": [0,2], "jobs": [1], ...}
 }
 
 export interface PainPoint {
