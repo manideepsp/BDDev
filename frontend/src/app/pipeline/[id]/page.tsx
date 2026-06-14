@@ -318,7 +318,7 @@ function GatheredSummary({ gathered }: { gathered: NonNullable<Pipeline['gathere
         {websitePages.length > 0 ? (
           <div className="space-y-1">
             {websitePages.map((pg, i) => (
-              <div key={i} className="flex items-center gap-2">
+              <div key={pg.url ?? i} className="flex items-center gap-2">
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0">page</span>
                 <span className="text-xs text-slate-600 truncate">{pg.title || pg.url}</span>
               </div>
