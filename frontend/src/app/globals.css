@@ -1,3 +1,57 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgb(99 102 241 / 0.12);
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.3); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(148 163 184 / 0.55); }
+}
+
+@layer utilities {
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+
+  @keyframes livePulse {
+    0%, 100% { transform: scale(1);    opacity: 1; }
+    50%       { transform: scale(0.8);  opacity: 0.45; }
+  }
+
+  @keyframes progressBar {
+    from { width: 0; }
+  }
+
+  .animate-fade-in    { animation: fadeIn    0.3s  ease-out both; }
+  .animate-slide-up   { animation: slideUp   0.35s ease-out both; }
+  .animate-scale-in   { animation: scaleIn   0.25s ease-out both; }
+  .animate-live-pulse { animation: livePulse 2s    ease-in-out infinite; }
+
+  /* stagger siblings with these delay helpers */
+  .anim-delay-1 { animation-delay: 60ms;  }
+  .anim-delay-2 { animation-delay: 120ms; }
+  .anim-delay-3 { animation-delay: 180ms; }
+  .anim-delay-4 { animation-delay: 240ms; }
+}
