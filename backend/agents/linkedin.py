@@ -13,13 +13,16 @@ class LinkedInAgent:
         "Accept-Language": "en-US,en;q=0.9",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
+    # Regional subdomains serve the PUBLIC company page; www.linkedin.com walls it
+    # behind auth. Try regional first, fall back to www only as a last resort.
+    SUBDOMAINS = ("in", "uk", "sg", "ca", "au", "www")
 
-    def run(self, company_name: str) -> dict:
+    def run(self, company_name: str, linkedin_url: str | None = None) -> dict:
         company_info = ""
         fields: dict = {}
         people = []
         try:
-            company_info, fields = self._scrape_company_page(company_name)
+            company_info, fields = self._scrape_company_page(company_name, linkedin_url)
         except Exception as e:
             logger.debug(f"LinkedIn company page failed: {e}")
 
@@ -39,20 +42,44 @@ class LinkedInAgent:
 
     # ---- Company page -------------------------------------------------------
 
-    def _scrape_company_page(self, company_name: str) -> tuple[str, dict]:
-        slug = re.sub(r"[^a-z0-9]+", "-", company_name.lower()).strip("-")
-        # /about/ carries the richest overview; fall back to the base page.
-        for url in (f"https://www.linkedin.com/company/{slug}/about/",
-                    f"https://www.linkedin.com/company/{slug}/"):
+    def _slug_from_url(self, url: str) -> str | None:
+        m = re.search(r"linkedin\.com/company/([^/?#]+)", url, re.I)
+        return m.group(1).strip().lower() if m else None
+
+    def _candidate_urls(self, company_name: str, linkedin_url: str | None) -> list[str]:
+        """Build an ordered list of public company-page URLs to try.
+
+        The base company page on a regional subdomain (in., uk., …) is public and
+        embeds the full JSON-LD org schema. The /about/ path and the www. host both
+        bounce to the auth wall, so we hit the regional base pages only. If the user
+        pasted a LinkedIn URL we reuse its slug but still route through a public
+        regional subdomain rather than www.
+        """
+        slug = None
+        if linkedin_url:
+            slug = self._slug_from_url(linkedin_url)
+        if not slug:
+            slug = re.sub(r"[^a-z0-9]+", "-", company_name.lower()).strip("-")
+
+        # Base page only — no trailing /about/, which forces login.
+        return [f"https://{sub}.linkedin.com/company/{slug}" for sub in self.SUBDOMAINS]
+
+    def _scrape_company_page(self, company_name: str, linkedin_url: str | None = None) -> tuple[str, dict]:
+        for url in self._candidate_urls(company_name, linkedin_url):
             try:
                 r = requests.get(url, headers=self.HEADERS, timeout=10)
             except Exception:
                 continue
             if r.status_code != 200 or not r.text:
                 continue
+            # A 200 can still be the soft auth wall (LinkedIn redirects to /login).
+            if "login" in r.url.lower() or "authwall" in r.url.lower():
+                continue
             soup = BeautifulSoup(r.text, "html.parser")
             fields = self._extract_fields(soup)
-            if fields:
+            # Guard against parsing the login page itself as company data.
+            if fields and "linkedin login" not in (fields.get("name", "").lower()):
+                logger.info(f"LinkedIn company page scraped from {url}")
                 return self._compose_info(company_name, fields), fields
         return "", {}
 
@@ -67,9 +94,12 @@ class LinkedInAgent:
             emp = org.get("numberOfEmployees")
             if isinstance(emp, dict):
                 lo, hi = emp.get("minValue"), emp.get("maxValue")
-                fields["company_size"] = f"{lo}-{hi} employees" if lo and hi else self._clean(emp.get("value"))
+                if lo and hi:
+                    fields["company_size"] = f"{lo}-{hi} employees"
+                elif emp.get("value"):
+                    fields["company_size"] = f"{self._clean(emp.get('value'))} employees"
             elif emp:
-                fields["company_size"] = self._clean(emp)
+                fields["company_size"] = f"{self._clean(emp)} employees"
             fields["founded"] = self._clean(org.get("foundingDate"))
             addr = org.get("address")
             if isinstance(addr, dict):
