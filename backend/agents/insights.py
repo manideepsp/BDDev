@@ -116,13 +116,13 @@ class InsightsAgent:
         for page in website_data.get("pages", [])[:2]:
             context_parts.append(f"WEBSITE: {page.get('text','')[:600]}")
         if linkedin_data.get("company_info"):
-            context_parts.append(f"LINKEDIN: {linkedin_data['company_info'][:400]}")
+            context_parts.append(f"LINKEDIN PROFILE:\n{linkedin_data['company_info'][:1400]}")
         for p in linkedin_data.get("people", []):
             context_parts.append(f"PERSON FOUND: {p.get('name','')} - {p.get('title','')}")
         for r in research_results.get("results", [])[:8]:
             context_parts.append(f"[{r['angle'].upper()}] {r['title']}: {r['snippet']}")
         context_parts.append(f"KEYWORDS: {json.dumps(keywords)}")
-        context = "\n\n".join(context_parts)[:4000]
+        context = "\n\n".join(context_parts)[:5500]
 
         target_context = target_context or {}
         target_block = ""
