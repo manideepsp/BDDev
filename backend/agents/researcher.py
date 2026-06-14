@@ -1,15 +1,18 @@
 import os, logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 class WebResearchAgent:
     def run(self, company_name: str, keywords: dict, company_url: str | None) -> dict:
+        now = datetime.now()
+        year = now.year
         results = []
         queries = [
-            (f"{company_name} news 2025 OR 2026", "news"),
+            (f"{company_name} news {year} OR {year - 1}", "news"),
             (f"{company_name} competitors alternative", "competitive"),
             (f"{company_name} funding OR revenue OR growth", "financial"),
-            (f"{' '.join(keywords.get('keywords', [])[:4])} market trends", "market"),
+            (f"{' '.join(keywords.get('keywords', [])[:4])} market trends {year}", "market"),
         ]
         tavily_key = os.getenv("TAVILY_API_KEY")
         seen_urls = set()

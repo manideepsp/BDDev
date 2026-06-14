@@ -294,137 +294,63 @@ function SignalSections({ people, posts, jobs, removed, onToggle }: {
   );
 }
 
-function GatheredSummary({ gathered }: { gathered: NonNullable<Pipeline['gathered']> }) {
-  const websitePages = gathered.website?.pages ?? [];
-  const linkedinFields = gathered.linkedin?.company_fields ?? {};
-  const linkedinInfo = gathered.linkedin?.company_info;
-  const keywords = gathered.keywords?.keywords ?? [];
-  const productAreas = gathered.keywords?.product_areas ?? [];
-  const researchResults = gathered.research?.results ?? [];
-  const crawlFindings = gathered.crawl?.findings ?? [];
-  const crawlByType = gathered.crawl?.by_type ?? {};
-  const ragChunks = gathered.rag_chunks ?? 0;
+// --- Cluster-based accept/reject review panel --------------------------------
 
-  const fieldEntries = Object.entries(linkedinFields).filter(([, v]) => v);
+type ExcludedItems = Record<string, Set<number>>;
 
+function AcceptRejectItem({ accepted, onToggle, children }: {
+  accepted: boolean; onToggle: () => void; children: React.ReactNode;
+}) {
   return (
-    <div className="space-y-3">
-      {/* Website */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-          🌐 Website <span className="text-slate-400 normal-case font-normal">
-            {websitePages.length > 0 ? `— ${websitePages.length} page(s) scraped` : '— not scraped'}
-            {gathered.website?.error ? ` (${gathered.website.error})` : ''}
+    <div className={`relative flex items-start gap-2.5 rounded-lg border p-3 transition-colors ${
+      accepted ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-200 opacity-50'
+    }`}>
+      <button
+        onClick={onToggle}
+        className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+          accepted ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 text-slate-400'
+        }`}
+        title={accepted ? 'Click to reject' : 'Click to accept'}
+      >
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {accepted
+            ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+          }
+        </svg>
+      </button>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+function ClusterCard({ icon, label, count, accepted, children, defaultOpen = true }: {
+  icon: string; label: string; count: number; accepted: number;
+  children: React.ReactNode; defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const allAccepted = accepted === count;
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-base">{icon}</span>
+          <span className="text-sm font-semibold text-slate-800">{label}</span>
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+            allAccepted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+          }`}>
+            {accepted}/{count} kept
           </span>
-        </p>
-        {websitePages.length > 0 ? (
-          <div className="space-y-1">
-            {websitePages.map((pg, i) => (
-              <div key={pg.url ?? i} className="flex items-center gap-2">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0">page</span>
-                <span className="text-xs text-slate-600 truncate">{pg.title || pg.url}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-slate-400">No pages scraped — synthesis will rely on other sources.</p>
-        )}
-      </div>
-
-      {/* LinkedIn company fields */}
-      {(fieldEntries.length > 0 || linkedinInfo) && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            💼 LinkedIn Company Profile
-            {gathered.linkedin?.error && <span className="text-amber-500 normal-case font-normal ml-1">(partial)</span>}
-          </p>
-          {fieldEntries.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
-              {fieldEntries.map(([k, v]) => (
-                <div key={k} className="bg-slate-50 rounded-lg p-2">
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">{k}</p>
-                  <p className="text-xs font-medium text-slate-700 mt-0.5 truncate">{String(v)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-          {linkedinInfo && (
-            <p className="text-xs text-slate-600 line-clamp-3">{linkedinInfo.slice(0, 300)}{linkedinInfo.length > 300 ? '…' : ''}</p>
-          )}
         </div>
-      )}
-
-      {/* Keywords */}
-      {(keywords.length > 0 || productAreas.length > 0) && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">🔑 Extracted Keywords</p>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {keywords.map((kw, i) => (
-              <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600">{kw}</span>
-            ))}
-          </div>
-          {productAreas.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {productAreas.map((pa, i) => (
-                <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{pa}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Web research results */}
-      {researchResults.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            🔍 Web Research <span className="text-slate-400 normal-case font-normal">— {researchResults.length} results</span>
-          </p>
-          <div className="space-y-1">
-            {researchResults.slice(0, 6).map((r, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 flex-shrink-0 mt-0.5">{r.angle}</span>
-                <span className="text-xs text-slate-600 truncate">{r.title}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Open-web crawl */}
-      {crawlFindings.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-            🕸️ Open-Web Crawl <span className="text-slate-400 normal-case font-normal">
-              — {gathered.crawl?.pages_crawled ?? 0} pages crawled of {gathered.crawl?.discovered ?? crawlFindings.length} found
-            </span>
-          </p>
-          {Object.keys(crawlByType).length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {Object.entries(crawlByType).map(([type, count]) => (
-                <span key={type} className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-                  {type} · {count}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="space-y-1.5">
-            {crawlFindings.slice(0, 10).map((f, i) => (
-              <a key={i} href={f.url} target="_blank" rel="noopener noreferrer"
-                 className="flex items-start gap-2 hover:text-indigo-600 transition-colors group">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 flex-shrink-0 mt-0.5">{f.source_type}</span>
-                <span className="text-xs text-slate-600 truncate group-hover:text-indigo-600">{f.title || f.url}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* RAG index summary */}
-      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-        <p className="text-xs text-indigo-700">
-          <span className="font-semibold">{ragChunks} chunks indexed</span> into the vector database — synthesis will retrieve the most relevant evidence via RAG queries.
-        </p>
-      </div>
+        <svg className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && <div className="px-4 pb-4 space-y-2">{children}</div>}
     </div>
   );
 }
@@ -434,29 +360,60 @@ function ReviewPanel({ pipelineId, gathered, onContinued }: {
   gathered: NonNullable<Pipeline['gathered']>;
   onContinued: () => void;
 }) {
-  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  // People: Set<name> of removed
+  const [removedPeople, setRemovedPeople] = useState<Set<string>>(new Set());
+  // Other sources: Set<index> per source key
+  const [excluded, setExcluded] = useState<ExcludedItems>({});
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
   const people = gathered.people?.people ?? [];
   const posts = gathered.posts?.posts ?? [];
   const jobs = gathered.jobs?.jobs ?? [];
+  const crawlFindings = gathered.crawl?.findings ?? [];
+  const researchResults = gathered.research?.results ?? [];
 
-  function toggle(name: string) {
-    setRemoved(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
+  // LinkedIn & website are read-only (accept-only, shown as info)
+  const linkedinFields = gathered.linkedin?.company_fields ?? {};
+  const websitePages = gathered.website?.pages ?? [];
+  const keywords = gathered.keywords?.keywords ?? [];
+  const productAreas = gathered.keywords?.product_areas ?? [];
+  const ragChunks = gathered.rag_chunks ?? 0;
+  const asOf = gathered.posts?.as_of;
+
+  function togglePerson(name: string) {
+    setRemovedPeople(prev => { const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n; });
+  }
+
+  function toggleItem(source: string, idx: number) {
+    setExcluded(prev => {
+      const next = { ...prev };
+      const s = new Set(next[source] ?? []);
+      s.has(idx) ? s.delete(idx) : s.add(idx);
+      next[source] = s;
       return next;
     });
   }
 
+  function isExcluded(source: string, idx: number) {
+    return excluded[source]?.has(idx) ?? false;
+  }
+
+  const totalExcluded = removedPeople.size + Object.values(excluded).reduce((a, s) => a + s.size, 0);
+
   async function handleContinue() {
     setSubmitting(true);
     setError('');
+    const excludedItems: Record<string, number[]> = {};
+    for (const [k, s] of Object.entries(excluded)) {
+      if (s.size > 0) excludedItems[k] = Array.from(s);
+    }
     try {
       await continuePipeline(pipelineId, {
         human_input: note.trim() || undefined,
-        removed_people: Array.from(removed),
+        removed_people: Array.from(removedPeople),
+        excluded_items: excludedItems,
       });
       onContinued();
     } catch (err) {
@@ -466,63 +423,204 @@ function ReviewPanel({ pipelineId, gathered, onContinued }: {
   }
 
   return (
-    <div className="mb-8">
-      {/* Header banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+    <div className="mb-8 space-y-4">
+      {/* Header */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
         <p className="text-sm font-semibold text-amber-800">✋ Human checkpoint — review before synthesis</p>
         <p className="text-xs text-amber-700 mt-1">
-          The swarm gathered and indexed everything below. Review what was found, remove irrelevant people,
-          and optionally add context that will be injected with high priority into the RAG synthesis.
+          The agents gathered everything below{asOf ? ` (as of ${asOf})` : ''} and indexed it for RAG.
+          Accept or reject individual items in each cluster — only kept items feed into synthesis.
+          Add context in the box at the bottom to inject your own knowledge with highest priority.
         </p>
-        <div className="grid grid-cols-3 gap-2 mt-3">
-          {[
-            ['🌐 + 💼', 'Website & LinkedIn', 'What the agents found about the company'],
-            ['🐝 + 📣 + 💼', 'People, Posts & Jobs', 'Remove noise; keep relevant contacts'],
-            ['✏️ Your context', 'Optional but impactful', 'Correct facts, add relationships, focus areas'],
-          ].map(([icon, label, desc]) => (
-            <div key={label} className="bg-white rounded-lg p-2.5 border border-amber-100">
-              <p className="text-[10px] font-medium text-amber-700">{icon} {label}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">{desc}</p>
-            </div>
-          ))}
+        <div className="flex flex-wrap gap-2 mt-3 text-[10px] text-amber-600">
+          <span className="bg-white border border-amber-200 px-2 py-1 rounded-md">
+            <span className="font-semibold">{ragChunks}</span> chunks indexed
+          </span>
+          {totalExcluded > 0 && (
+            <span className="bg-red-50 border border-red-200 text-red-600 px-2 py-1 rounded-md">
+              <span className="font-semibold">{totalExcluded}</span> items excluded
+            </span>
+          )}
         </div>
       </div>
 
-      {/* What was gathered */}
-      <div className="mb-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">What the agents gathered</p>
-        <GatheredSummary gathered={gathered} />
-      </div>
+      {/* Cluster 1: Company Identity (read-only — agents own this) */}
+      {(Object.keys(linkedinFields).length > 0 || websitePages.length > 0) && (
+        <ClusterCard icon="🏢" label="Company Identity"
+          count={Object.keys(linkedinFields).filter(k => k !== 'people').length + websitePages.length}
+          accepted={Object.keys(linkedinFields).filter(k => k !== 'people').length + websitePages.length}>
+          {Object.keys(linkedinFields).filter(k => k !== 'people').length > 0 && (
+            <div className="mb-2">
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">LinkedIn</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {Object.entries(linkedinFields).filter(([k]) => k !== 'people' && linkedinFields[k as keyof typeof linkedinFields]).map(([k, v]) => (
+                  <div key={k} className="bg-slate-50 rounded-lg p-2">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{k}</p>
+                    <p className="text-xs font-medium text-slate-700 mt-0.5">{String(v).slice(0, 60)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {websitePages.length > 0 && (
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Website pages scraped</p>
+              {websitePages.map((pg, i) => (
+                <div key={pg.url ?? i} className="flex items-center gap-2 py-0.5">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">page</span>
+                  <span className="text-xs text-slate-600 truncate">{pg.title || pg.url}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {(keywords.length > 0 || productAreas.length > 0) && (
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">Extracted keywords</p>
+              <div className="flex flex-wrap gap-1.5">
+                {keywords.map((kw, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600">{kw}</span>)}
+                {productAreas.map((pa, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">{pa}</span>)}
+              </div>
+            </div>
+          )}
+        </ClusterCard>
+      )}
 
-      {/* People / posts / jobs (editable) */}
-      <div className="mb-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Signals — review &amp; prune</p>
-        <SignalSections people={people} posts={posts} jobs={jobs} removed={removed} onToggle={toggle} />
-      </div>
+      {/* Cluster 2: Leadership & People */}
+      {people.length > 0 && (
+        <ClusterCard icon="🐝" label="Leadership & People"
+          count={people.length} accepted={people.length - removedPeople.size}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {people.map((p) => (
+              <AcceptRejectItem key={p.name} accepted={!removedPeople.has(p.name)}
+                onToggle={() => togglePerson(p.name)}>
+                <p className="text-sm font-semibold text-slate-900 truncate">{p.name}</p>
+                <p className="text-xs text-slate-500 truncate">{p.title}</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {p.role_category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">{p.role_category}</span>}
+                  {p.seniority && p.seniority !== 'Unknown' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{p.seniority}</span>}
+                  {p.location && p.location !== 'Unknown' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">📍 {p.location}</span>}
+                </div>
+                {p.relevance && <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">{p.relevance}</p>}
+              </AcceptRejectItem>
+            ))}
+          </div>
+        </ClusterCard>
+      )}
 
-      {/* Human context input + continue */}
+      {/* Cluster 3: Recent Announcements & Posts */}
+      {posts.length > 0 && (
+        <ClusterCard icon="📣" label="Recent Announcements & Posts"
+          count={posts.length} accepted={posts.length - (excluded['posts']?.size ?? 0)}>
+          {asOf && (
+            <p className="text-[10px] text-slate-400 mb-2">
+              As of {asOf} · {gathered.posts?.lookback_months}mo lookback
+              · sources: company website, LinkedIn, web
+            </p>
+          )}
+          <div className="space-y-2">
+            {posts.map((post, i) => (
+              <AcceptRejectItem key={i} accepted={!isExcluded('posts', i)} onToggle={() => toggleItem('posts', i)}>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                    post.source === 'company' ? 'bg-emerald-100 text-emerald-700' :
+                    post.source === 'LinkedIn' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                  }`}>{post.source}</span>
+                  {post.date && <span className="text-[10px] text-slate-400">{post.date}</span>}
+                </div>
+                <a href={post.url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs font-medium text-slate-700 hover:text-indigo-600 line-clamp-1">{post.title}</a>
+                {post.text && <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">{post.text}</p>}
+              </AcceptRejectItem>
+            ))}
+          </div>
+        </ClusterCard>
+      )}
+
+      {/* Cluster 4: Open Roles */}
+      {jobs.length > 0 && (
+        <ClusterCard icon="💼" label="Open Roles — hiring signals"
+          count={jobs.length} accepted={jobs.length - (excluded['jobs']?.size ?? 0)}
+          defaultOpen={false}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {jobs.map((job, i) => (
+              <AcceptRejectItem key={i} accepted={!isExcluded('jobs', i)} onToggle={() => toggleItem('jobs', i)}>
+                <a href={job.url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs font-medium text-slate-700 hover:text-indigo-600 line-clamp-1">{job.title}</a>
+                {job.location && <p className="text-[10px] text-slate-400 mt-0.5">📍 {job.location}</p>}
+              </AcceptRejectItem>
+            ))}
+          </div>
+        </ClusterCard>
+      )}
+
+      {/* Cluster 5: Web Presence (crawl findings grouped by type) */}
+      {crawlFindings.length > 0 && (() => {
+        const byType: Record<string, { item: typeof crawlFindings[0]; idx: number }[]> = {};
+        crawlFindings.forEach((f, idx) => {
+          (byType[f.source_type] ??= []).push({ item: f, idx });
+        });
+        return (
+          <ClusterCard icon="🕸️" label="Web Presence"
+            count={crawlFindings.length} accepted={crawlFindings.length - (excluded['crawl']?.size ?? 0)}
+            defaultOpen={false}>
+            {Object.entries(byType).map(([type, items]) => (
+              <div key={type}>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">{type}</p>
+                <div className="space-y-1.5">
+                  {items.map(({ item, idx }) => (
+                    <AcceptRejectItem key={idx} accepted={!isExcluded('crawl', idx)} onToggle={() => toggleItem('crawl', idx)}>
+                      <a href={item.url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs font-medium text-slate-700 hover:text-indigo-600 line-clamp-1">{item.title || item.url}</a>
+                      {item.snippet && <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">{item.snippet}</p>}
+                    </AcceptRejectItem>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </ClusterCard>
+        );
+      })()}
+
+      {/* Cluster 6: Research */}
+      {researchResults.length > 0 && (
+        <ClusterCard icon="🔍" label="Targeted Research"
+          count={researchResults.length} accepted={researchResults.length - (excluded['research']?.size ?? 0)}
+          defaultOpen={false}>
+          <div className="space-y-1.5">
+            {researchResults.map((r, i) => (
+              <AcceptRejectItem key={i} accepted={!isExcluded('research', i)} onToggle={() => toggleItem('research', i)}>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">{r.angle}</span>
+                </div>
+                <a href={r.url} target="_blank" rel="noopener noreferrer"
+                  className="text-xs font-medium text-slate-700 hover:text-indigo-600 line-clamp-1">{r.title}</a>
+                {r.snippet && <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">{r.snippet}</p>}
+              </AcceptRejectItem>
+            ))}
+          </div>
+        </ClusterCard>
+      )}
+
+      {/* Human context + continue */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-          Add context for synthesis <span className="text-slate-400 normal-case font-normal">(optional — highest priority in synthesis)</span>
+          Add context for synthesis <span className="text-slate-400 normal-case font-normal">(optional — highest priority)</span>
         </label>
-        <textarea
-          value={note}
-          onChange={e => setNote(e.target.value)}
-          rows={3}
+        <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
           placeholder="e.g. 'We already spoke to their VP Eng — focus on the data platform gap', or correct anything the agents got wrong..."
           className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
         />
         {error && (
-          <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
-            ⚠️ {error}
-          </div>
+          <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">⚠️ {error}</div>
         )}
-        <div className="flex items-center gap-3 mt-3">
+        <div className="flex items-center gap-3 mt-3 flex-wrap">
           <button onClick={handleContinue} disabled={submitting}
             className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-6 py-2.5 rounded-lg transition-colors">
             {submitting ? '⏳ Starting synthesis...' : '🧠 Continue to Insights →'}
           </button>
-          {removed.size > 0 && <span className="text-xs text-slate-500">{removed.size} person(s) excluded</span>}
+          {totalExcluded > 0 && (
+            <span className="text-xs text-amber-600 font-medium">{totalExcluded} item(s) will be excluded</span>
+          )}
           <span className="text-xs text-slate-400 ml-auto">Nothing here blocks synthesis — continue when ready</span>
         </div>
       </div>
