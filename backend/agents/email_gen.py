@@ -36,6 +36,7 @@ class EmailGeneratorAgent:
         tone: str,
         trigger_event: str = "",
         linkedin_quote: str = "",
+        word_limit: int = 150,
     ) -> dict:
         tone_desc = TONE_MAP.get(tone, TONE_MAP["professional"])
         pains = pain_point_titles(intelligence, limit=2)
@@ -96,7 +97,7 @@ EMAIL GUIDELINES & CONSTRAINTS:
 Goal: Book a 15-minute introductory call.
 Framework: Start with a sharp business observation or the trigger event above. Then, briefly share how we help companies like theirs, and end with a low-pressure, curiosity-driven call-to-action.
 Tone: {tone_desc}
-Length: Strictly under 500 words (body only). Aim for 100-150 words — concise wins.
+Length: Strictly under {word_limit} words (body only). Aim for {max(50, word_limit - 50)}–{word_limit} words — concise wins.
 Rules:
 - Do NOT use exclamation points anywhere in the email.
 - Do NOT use generic flattery or clichés: "I hope this finds you well", "I came across your profile", "I wanted to reach out", "touching base", "circling back", "synergy", "solutions", "best-in-class".

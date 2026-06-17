@@ -369,6 +369,7 @@ export interface EmailV2Request {
   tone: 'professional' | 'conversational' | 'bold';
   trigger_event?: string;
   linkedin_quote?: string;
+  word_limit?: number;
 }
 
 export async function startAnalysis(data: AnalyzeRequest): Promise<{ pipeline_id: string; status: string }> {

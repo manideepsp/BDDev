@@ -126,6 +126,7 @@ class EmailRequest(BaseModel):
     tone: str = "professional"
     trigger_event: str = ""      # editable recent signal — funding, launch, etc.
     linkedin_quote: str = ""     # specific quote from prospect's LinkedIn / interview
+    word_limit: int = 150        # max words for the email body
 
 class PitchRequest(BaseModel):
     prospect_id: str
@@ -316,6 +317,7 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
             prospect, poc_plan, intelligence, p["company_name"],
             body.sender_name, body.sender_company, body.sender_offering, body.tone,
             trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
+            word_limit=body.word_limit,
         )
         save_email(pipeline_id, body.prospect_id, email)
         return email

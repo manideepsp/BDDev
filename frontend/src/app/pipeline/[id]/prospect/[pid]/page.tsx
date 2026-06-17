@@ -113,6 +113,7 @@ interface EmailForm {
   tone: Tone;
   trigger_event: string;
   linkedin_quote: string;
+  word_limit: number;
 }
 
 export default function ProspectPage() {
@@ -141,9 +142,10 @@ export default function ProspectPage() {
     tone: 'professional',
     trigger_event: '',
     linkedin_quote: '',
+    word_limit: 150,
   });
 
-  function setField(key: keyof EmailForm, value: string) {
+  function setField(key: keyof EmailForm, value: string | number) {
     setEmailForm(f => ({ ...f, [key]: value }));
   }
 
@@ -214,6 +216,7 @@ export default function ProspectPage() {
         tone: emailForm.tone,
         trigger_event: emailForm.trigger_event || undefined,
         linkedin_quote: emailForm.linkedin_quote || undefined,
+        word_limit: emailForm.word_limit,
       });
       setEmails(prev => [email, ...prev]);
       setSelectedSubject(prev => [0, ...prev]);  // default to first subject line for new email
@@ -493,6 +496,28 @@ export default function ProspectPage() {
                     {emailForm.tone === 'conversational' && 'Warm and human. One operator writing to another.'}
                     {emailForm.tone === 'bold' && 'Opens with a sharp insight or number. Earns attention fast.'}
                   </p>
+                </div>
+              </div>
+
+              {/* Word limit */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-slate-600">Body Word Limit</label>
+                  <span className="text-sm font-bold text-indigo-600 tabular-nums">{emailForm.word_limit} words</span>
+                </div>
+                <input
+                  type="range"
+                  min={75}
+                  max={500}
+                  step={25}
+                  value={emailForm.word_limit}
+                  onChange={e => setField('word_limit', String(Number(e.target.value)))}
+                  className="w-full accent-indigo-600"
+                />
+                <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                  <span>75 — ultra-short</span>
+                  <span>150 — recommended</span>
+                  <span>500 — detailed</span>
                 </div>
               </div>
 
