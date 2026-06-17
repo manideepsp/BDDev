@@ -1,67 +1,162 @@
-import json, logging, uuid
+import logging, uuid
 from datetime import datetime
 from utils import extract_json, pain_point_titles
 
 logger = logging.getLogger(__name__)
 
 TONE_MAP = {
-    "professional": "formal, polished, and executive-level — confident but respectful",
-    "conversational": "warm, friendly, and human — professional but approachable",
-    "bold": "direct and challenge-oriented — lead with a provocative insight or stat, be bold",
+    "professional": (
+        "formal, polished, executive-to-executive. Calm confidence, zero fluff. "
+        "Reads like a respected peer who values the reader's time."
+    ),
+    "conversational": (
+        "warm and human, like a thoughtful note from one operator to another. "
+        "Contractions, plain words, a touch of personality — never chummy or cute."
+    ),
+    "bold": (
+        "direct and provocative. Open with a sharp, specific insight or a number "
+        "that reframes their situation. Confident, never arrogant; earns the reply."
+    ),
 }
+
 
 class EmailGeneratorAgent:
     def __init__(self, groq_client):
         self.client = groq_client
 
-    def run(self, prospect: dict, poc_plan: dict, intelligence: dict, company_name: str,
-            sender_name: str, sender_company: str, sender_offering: str, tone: str) -> dict:
-        keywords = intelligence.get("key_keywords", [])
-        _pains = pain_point_titles(intelligence, limit=1)
-        top_pain = _pains[0] if _pains else ""
+    def run(
+        self,
+        prospect: dict,
+        poc_plan: dict,
+        intelligence: dict,
+        company_name: str,
+        sender_name: str,
+        sender_company: str,
+        sender_offering: str,
+        tone: str,
+        trigger_event: str = "",
+        linkedin_quote: str = "",
+        word_limit: int = 150,
+    ) -> dict:
         tone_desc = TONE_MAP.get(tone, TONE_MAP["professional"])
+        pains = pain_point_titles(intelligence, limit=2)
+        pain_primary = pains[0] if pains else ""
+        pain_secondary = pains[1] if len(pains) > 1 else ""
 
-        prompt = f"""You are a top-tier BD strategist who writes emails that get responses.
+        overview = (intelligence.get("company_overview") or {})
+        recents = intelligence.get("recent_developments") or []
+        # Use caller-supplied trigger event first; fall back to first recent development
+        resolved_trigger = trigger_event.strip() or (recents[0] if recents else "")
+        contact_angle = prospect.get("contact_angle", "")
+        value_prop = poc_plan.get("value_proposition", "")
+        industry = overview.get("industry", "")
 
-SENDER: {sender_name} at {sender_company}
-OFFERING: {sender_offering}
+        # Build the structured context the prompt template slots into
+        my_company_context = (
+            f"Name: {sender_name}\n"
+            f"Company: {sender_company}\n"
+            f"What we do (value proposition): {sender_offering}"
+        )
 
-TARGET: {prospect.get('name','Unknown')} ({prospect.get('title','')}) at {company_name}
-CONTACT ANGLE: {prospect.get('contact_angle','')}
-TOP PAIN POINT: {top_pain}
-POC VALUE PROP: {poc_plan.get('value_proposition','')}
-KEY KEYWORDS (weave 2-3 naturally): {', '.join(keywords[:6])}
-TONE: {tone_desc}
+        prospect_context = (
+            f"Name: {prospect.get('name', 'the contact')}\n"
+            f"Title: {prospect.get('title', '')}\n"
+            f"Company: {company_name}\n"
+            f"Industry: {industry}\n"
+            f"Primary pain point: {pain_primary}\n"
+            f"Secondary pain point: {pain_secondary}\n"
+            f"Why this person, specifically: {contact_angle}"
+        )
 
-Write a highly personalized outreach email:
-1. Open with a specific observation about their company (not generic)
-2. Connect their pain point to your offering
-3. Body under 150 words
-4. End with a single low-friction CTA
-5. Sign off with sender name
+        # Best trigger to anchor the opener on
+        trigger_block = ""
+        if linkedin_quote.strip():
+            trigger_block = f"Use this specific quote from the prospect's LinkedIn/interview as the opening line:\n\"{linkedin_quote.strip()}\""
+        elif resolved_trigger:
+            trigger_block = f"Anchor the opening on this recent trigger event at {company_name}:\n{resolved_trigger}"
+        else:
+            trigger_block = f"Anchor the opening on the primary pain point: {pain_primary}"
+
+        poc_hook = value_prop or poc_plan.get("objective", "")
+
+        prompt = f"""Act as an expert B2B sales copywriter. Write a concise, value-driven cold email to a prospect.
+
+MY COMPANY CONTEXT:
+{my_company_context}
+
+TARGET PROSPECT:
+{prospect_context}
+
+PERSONALISATION SIGNAL (use this to open — do NOT ignore it):
+{trigger_block}
+
+POC HOOK (weave into the body naturally):
+{poc_hook}
+
+EMAIL GUIDELINES & CONSTRAINTS:
+Goal: Book a 15-minute introductory call.
+Framework: Start with a sharp business observation or the trigger event above. Then, briefly share how we help companies like theirs, and end with a low-pressure, curiosity-driven call-to-action.
+Tone: {tone_desc}
+Length: Strictly under {word_limit} words (body only). Aim for {max(50, word_limit - 50)}–{word_limit} words — concise wins.
+Rules:
+- Do NOT use exclamation points anywhere in the email.
+- Do NOT use generic flattery or clichés: "I hope this finds you well", "I came across your profile", "I wanted to reach out", "touching base", "circling back", "synergy", "solutions", "best-in-class".
+- Do NOT open with your company name or your own name.
+- DO open with an observation, a data point, or the trigger event — something about THEM.
+- ONE clear, low-pressure CTA at the end. Ask to talk, not for a meeting slot.
+- Sign off with the sender's first name and company on separate lines.
+- Write as one human to one person. If this email could be sent to 100 people unchanged, rewrite it.
+
+FOLLOW-UP (sent 5-7 days later):
+- Under 80 words.
+- Add a NEW angle, proof point, or insight — not "just bumping this".
+- Reference the first email in one short clause.
+
+OUTPUT REQUIRED:
+Provide exactly 3 distinct, compelling subject lines — each under 7 words. Vary the approach:
+  1. Provocative or insight-led
+  2. Relevance/trigger-based (reference their company, role, or recent event)
+  3. Curiosity or question-driven
 
 Return ONLY this JSON:
 {{
-  "subject": "Subject under 50 chars — specific",
-  "to_name": "{prospect.get('name','Contact')}",
-  "to_title": "{prospect.get('title','')}",
-  "body": "Full email body. Include sender name in sign-off.",
-  "follow_up_subject": "Follow-up subject for 7 days later",
-  "follow_up_body": "Brief follow-up under 70 words referencing first email.",
-  "poc_summary": "One sentence POC hook from the plan",
-  "keywords_used": ["keyword1", "keyword2", "keyword3"]
+  "subject_lines": [
+    "subject line 1 — provocative or insight-led",
+    "subject line 2 — relevance or trigger-based",
+    "subject line 3 — curiosity or question-driven"
+  ],
+  "subject": "the best of the three (copy it here)",
+  "to_name": "{prospect.get('name', 'Contact')}",
+  "to_title": "{prospect.get('title', '')}",
+  "body": "The complete email body, plain text. Opening observation → value bridge → CTA → sign-off.",
+  "follow_up_subject": "Short follow-up subject — can be Re: <original>",
+  "follow_up_body": "Under 80 words. New angle. References first email briefly.",
+  "poc_summary": "One plain sentence capturing the core hook offered to this prospect.",
+  "personalization_hook": "The specific signal you anchored the opener on (for user reference).",
+  "keywords_used": ["words or phrases from the research you wove in naturally"]
 }}"""
 
         try:
             msg = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                max_tokens=1500,
+                max_tokens=1800,
+                temperature=0.72,
+                response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": prompt}],
             )
             email_data = extract_json(msg.choices[0].message.content)
         except Exception as e:
             logger.error(f"EmailGeneratorAgent failed: {e}")
             raise
+
+        # Ensure subject_lines is always a list of 3
+        if not isinstance(email_data.get("subject_lines"), list):
+            email_data["subject_lines"] = [email_data.get("subject", "")]
+        email_data["subject_lines"] = (email_data["subject_lines"] + ["", "", ""])[:3]
+
+        # Keep the primary subject populated
+        if not email_data.get("subject") and email_data["subject_lines"][0]:
+            email_data["subject"] = email_data["subject_lines"][0]
 
         return {
             "id": str(uuid.uuid4()),

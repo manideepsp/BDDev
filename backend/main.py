@@ -124,6 +124,9 @@ class EmailRequest(BaseModel):
     sender_company: str
     sender_offering: str
     tone: str = "professional"
+    trigger_event: str = ""      # editable recent signal — funding, launch, etc.
+    linkedin_quote: str = ""     # specific quote from prospect's LinkedIn / interview
+    word_limit: int = 150        # max words for the email body
 
 class PitchRequest(BaseModel):
     prospect_id: str
@@ -294,7 +297,7 @@ async def generate_poc_plan(pipeline_id: str, body: POCRequest):
         return poc
     except Exception as e:
         logger.error(f"POC plan generation failed: {e}")
-        raise HTTPException(status_code=502, detail="LLM unavailable")
+        raise HTTPException(status_code=502, detail=f"POC plan generation failed: {e}")
 
 @app.post("/api/v2/pipeline/{pipeline_id}/email")
 async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
@@ -312,13 +315,15 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
     try:
         email = EmailGeneratorAgent(client).run(
             prospect, poc_plan, intelligence, p["company_name"],
-            body.sender_name, body.sender_company, body.sender_offering, body.tone
+            body.sender_name, body.sender_company, body.sender_offering, body.tone,
+            trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
+            word_limit=body.word_limit,
         )
         save_email(pipeline_id, body.prospect_id, email)
         return email
     except Exception as e:
         logger.error(f"Email generation failed: {e}")
-        raise HTTPException(status_code=502, detail="LLM unavailable")
+        raise HTTPException(status_code=502, detail=f"Email generation failed: {e}")
 
 @app.get("/api/v2/pipeline/{pipeline_id}/emails")
 async def get_pipeline_emails(pipeline_id: str):
@@ -367,7 +372,7 @@ async def generate_pitch_assets(pipeline_id: str, body: PitchRequest):
         return assets
     except Exception as e:
         logger.error(f"Pitch asset generation failed: {e}")
-        raise HTTPException(status_code=502, detail="LLM unavailable")
+        raise HTTPException(status_code=502, detail=f"Pitch generation failed: {e}")
 
 # --- feedback ---
 

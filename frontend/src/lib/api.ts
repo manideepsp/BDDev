@@ -63,6 +63,10 @@ export interface OutreachEmail {
   sender_company: string;
   tone: string;
   created_at: string;
+  poc_summary?: string;
+  keywords_used?: string[];
+  personalization_hook?: string;
+  subject_lines?: string[];
 }
 
 export interface Prospect {
@@ -363,6 +367,9 @@ export interface EmailV2Request {
   sender_company: string;
   sender_offering: string;
   tone: 'professional' | 'conversational' | 'bold';
+  trigger_event?: string;
+  linkedin_quote?: string;
+  word_limit?: number;
 }
 
 export async function startAnalysis(data: AnalyzeRequest): Promise<{ pipeline_id: string; status: string }> {

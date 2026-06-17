@@ -32,6 +32,7 @@ Return ONLY this JSON:
             msg = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 max_tokens=1200,
+                response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": prompt}],
             )
             return extract_json(msg.choices[0].message.content)
