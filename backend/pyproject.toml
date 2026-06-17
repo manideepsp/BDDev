@@ -1,0 +1,7 @@
+[project]
+name = "nexus-bd-backend"
+version = "0.1.0"
+authors = [
+  { name = "Duffer" }
+]
+requires-python = ">=3.11"
