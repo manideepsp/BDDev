@@ -346,7 +346,7 @@ async def generate_poc_plan(pipeline_id: str, body: POCRequest):
 
 @app.post("/api/v2/pipeline/{pipeline_id}/email")
 async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
-    from db import get_pipeline as db_get_pipeline, get_prospects, save_email
+    from db import get_pipeline as db_get_pipeline, get_prospects, save_email, get_feedback_preferences
     from agents.email_gen import EmailGeneratorAgent
     p = db_get_pipeline(pipeline_id)
     if not p:
@@ -357,12 +357,14 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
     if not prospect:
         raise HTTPException(status_code=404, detail="Prospect not found")
     poc_plan = prospect.get("poc_plan") or {}
+    feedback_prefs = get_feedback_preferences()
     try:
         email = EmailGeneratorAgent(client).run(
             prospect, poc_plan, intelligence, p["company_name"],
             body.sender_name, body.sender_company, body.sender_offering, body.tone,
             trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
             word_limit=body.word_limit,
+            feedback_prefs=feedback_prefs,
         )
         save_email(pipeline_id, body.prospect_id, email)
         return email
@@ -392,6 +394,8 @@ async def generate_ab_emails(pipeline_id: str, body: EmailABRequest):
         raise HTTPException(status_code=404, detail="Prospect not found")
     poc_plan = prospect.get("poc_plan") or {}
 
+    from db import get_feedback_preferences
+    feedback_prefs = get_feedback_preferences()
     loop = asyncio.get_running_loop()
     agent = EmailGeneratorAgent(client)
 
@@ -400,7 +404,7 @@ async def generate_ab_emails(pipeline_id: str, body: EmailABRequest):
             prospect, poc_plan, intelligence, p["company_name"],
             body.sender_name, body.sender_company, body.sender_offering, tone,
             trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
-            word_limit=body.word_limit,
+            word_limit=body.word_limit, feedback_prefs=feedback_prefs,
         ))
 
     try:
@@ -415,7 +419,7 @@ async def generate_ab_emails(pipeline_id: str, body: EmailABRequest):
 @app.post("/api/v2/pipeline/{pipeline_id}/bulk-generate")
 async def bulk_generate(pipeline_id: str, body: BulkGenerateRequest):
     """Generate POC plans and/or emails for ALL prospects in a pipeline, concurrently."""
-    from db import get_pipeline as db_get_pipeline, get_prospects, update_prospect_poc, save_email
+    from db import get_pipeline as db_get_pipeline, get_prospects, update_prospect_poc, save_email, get_feedback_preferences
     from agents.poc_plan import POCPlanAgent
     from agents.email_gen import EmailGeneratorAgent
 
@@ -429,6 +433,7 @@ async def bulk_generate(pipeline_id: str, body: BulkGenerateRequest):
     prospects = get_prospects(pipeline_id)
     if not prospects:
         return {"generated": 0, "results": []}
+    feedback_prefs = get_feedback_preferences()
 
     sem = asyncio.Semaphore(3)  # cap at 3 concurrent LLM calls (Groq rate-limit safe)
 
@@ -452,6 +457,7 @@ async def bulk_generate(pipeline_id: str, body: BulkGenerateRequest):
                         body.sender_name, body.sender_company,
                         body.sender_offering or p.get("user_description", ""),
                         body.tone, word_limit=body.word_limit,
+                        feedback_prefs=feedback_prefs,
                     ))
                     save_email(pipeline_id, prospect["id"], email)
                     result["email"] = email

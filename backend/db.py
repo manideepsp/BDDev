@@ -481,6 +481,52 @@ def update_prospect_status(prospect_id: str, status: str):
         conn.execute("UPDATE pipeline_prospects SET prospect_status=? WHERE id=?", (status, prospect_id))
 
 
+def get_feedback_preferences() -> dict:
+    """Aggregate feedback ratings into tone/style preferences for prompt injection.
+
+    Returns a dict with:
+      - preferred_tones: list of tones rated >= 4, sorted by avg rating desc
+      - high_rated_bodies: list of up to 3 email bodies rated 5 (for few-shot)
+      - avoided_tones: tones rated <= 2 consistently
+      - total_rated: total rated emails
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT f.rating, f.note, e.tone, e.body "
+            "FROM feedback f "
+            "LEFT JOIN pipeline_emails e ON f.output_id = e.id "
+            "WHERE f.output_type = 'email' AND f.rating IS NOT NULL "
+            "ORDER BY f.created_at DESC LIMIT 50"
+        ).fetchall()
+
+    if not rows:
+        return {"preferred_tones": [], "high_rated_bodies": [], "avoided_tones": [], "total_rated": 0}
+
+    tone_scores: dict[str, list[int]] = {}
+    high_bodies: list[str] = []
+    for row in rows:
+        rating = row[0]
+        tone = row[2]
+        body = row[3]
+        if tone:
+            tone_scores.setdefault(tone, []).append(rating or 0)
+        if rating == 5 and body and len(body) > 50:
+            high_bodies.append(body[:800])
+
+    preferred = sorted(
+        [(t, sum(s)/len(s)) for t, s in tone_scores.items() if sum(s)/len(s) >= 4.0],
+        key=lambda x: x[1], reverse=True
+    )
+    avoided = [t for t, s in tone_scores.items() if sum(s)/len(s) <= 2.0]
+
+    return {
+        "preferred_tones": [t for t, _ in preferred],
+        "high_rated_bodies": high_bodies[:3],
+        "avoided_tones": avoided,
+        "total_rated": len(rows),
+    }
+
+
 def get_stats():
     with get_conn() as conn:
         total = conn.execute("SELECT COUNT(*) FROM pipelines").fetchone()[0]

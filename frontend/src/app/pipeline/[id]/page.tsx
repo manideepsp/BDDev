@@ -248,6 +248,75 @@ function ICPCard({ icp }: { icp: ICPScore }) {
   );
 }
 
+// ── Risk warning banner — scans intelligence for BD-relevant risk signals ─────
+
+const RISK_PATTERNS: { pattern: RegExp; label: string; severity: 'high' | 'medium' }[] = [
+  { pattern: /layoff|laid off|reduction in force|redundanc|retrench/i, label: 'Layoff signals detected', severity: 'high' },
+  { pattern: /CEO|CTO|CFO|CPO|VP.*left|chief.*officer.*depart|exec.*resign|stepping down/i, label: 'Executive departure signal', severity: 'high' },
+  { pattern: /down round|funding concern|runway|cash.{0,15}crunch|bankruptcy|restructur/i, label: 'Financial distress signal', severity: 'high' },
+  { pattern: /pivot|rebranding|strategic shift|wind.{0,8}down|sunset|discontinu/i, label: 'Strategic pivot signal', severity: 'medium' },
+  { pattern: /glassdoor|negative review|high turnover|employee.{0,15}concern/i, label: 'Culture risk indicator', severity: 'medium' },
+  { pattern: /lawsuit|regulatory|investigation|SEC|FTC|DOJ|fine|penalty/i, label: 'Legal / regulatory risk', severity: 'medium' },
+];
+
+function detectRisks(intel: NonNullable<Pipeline['intelligence']>): { label: string; severity: 'high' | 'medium'; context: string }[] {
+  const blobs = [
+    ...(intel.recent_developments ?? []),
+    intel.competitive_landscape?.differentiators ?? '',
+    intel.company_overview?.description ?? '',
+    ...(intel.pain_points ?? []).map(p => `${p.inference} ${(p.evidence ?? []).join(' ')}`),
+    ...(intel.bd_opportunities ?? []),
+  ].join(' ');
+
+  const found: { label: string; severity: 'high' | 'medium'; context: string }[] = [];
+  const seen = new Set<string>();
+  for (const { pattern, label, severity } of RISK_PATTERNS) {
+    if (seen.has(label)) continue;
+    const match = blobs.match(pattern);
+    if (match) {
+      seen.add(label);
+      const idx = blobs.toLowerCase().indexOf(match[0].toLowerCase());
+      const snippet = blobs.slice(Math.max(0, idx - 30), idx + 80).replace(/\n/g, ' ').trim();
+      found.push({ label, severity, context: snippet });
+    }
+  }
+  return found;
+}
+
+function RiskBanner({ intel }: { intel: NonNullable<Pipeline['intelligence']> }) {
+  const risks = detectRisks(intel);
+  if (risks.length === 0) return null;
+  const highCount = risks.filter(r => r.severity === 'high').length;
+  return (
+    <div className={`rounded-xl border p-4 mb-4 ${highCount > 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className="flex items-start gap-3">
+        <span className="text-lg flex-shrink-0">{highCount > 0 ? '⚠️' : '\u{1f4cd}'}</span>
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-semibold mb-2 ${highCount > 0 ? 'text-red-700' : 'text-amber-700'}`}>
+            {highCount > 0 ? 'Risk signals detected — address before pitching' : 'Caution signals — consider in your approach'}
+          </p>
+          <div className="space-y-1.5">
+            {risks.map((r, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5 ${
+                  r.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                }`}>{r.severity}</span>
+                <div className="min-w-0">
+                  <p className={`text-xs font-medium ${r.severity === 'high' ? 'text-red-800' : 'text-amber-800'}`}>{r.label}</p>
+                  <p className="text-[10px] text-slate-500 truncate">...{r.context}...</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className={`text-[10px] mt-2 ${highCount > 0 ? 'text-red-600' : 'text-amber-600'}`}>
+            Run the Drift Check below to verify these signals before generating pitch assets.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TechStackCard({ tech }: { tech: TechStack }) {
   const cols: [string, string[], string][] = [
     ['Current', tech.current ?? [], 'bg-slate-100 text-slate-600'],
@@ -824,6 +893,9 @@ export default function PipelinePage() {
 
           {/* Tech stack signals */}
           {intel.tech_stack && <TechStackCard tech={intel.tech_stack} />}
+
+          {/* Risk signals banner */}
+          <RiskBanner intel={intel} />
 
           {/* Evidence-based pain points */}
           {(intel.pain_points ?? []).length > 0 && (
