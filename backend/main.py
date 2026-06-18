@@ -154,6 +154,15 @@ class FeedbackRequest(BaseModel):
     rating: int
     note: Optional[str] = None
 
+class BulkGenerateRequest(BaseModel):
+    sender_name: str = ""
+    sender_company: str = ""
+    sender_offering: str = ""
+    tone: str = "professional"
+    word_limit: int = 150
+    generate_poc: bool = True
+    generate_email: bool = True
+
 class LinkedInGenerateRequest(BaseModel):
     pass
 
@@ -343,6 +352,60 @@ async def get_pipeline_emails(pipeline_id: str):
     from db import get_emails
     return get_emails(pipeline_id)
 
+
+@app.post("/api/v2/pipeline/{pipeline_id}/bulk-generate")
+async def bulk_generate(pipeline_id: str, body: BulkGenerateRequest):
+    """Generate POC plans and/or emails for ALL prospects in a pipeline, concurrently."""
+    from db import get_pipeline as db_get_pipeline, get_prospects, update_prospect_poc, save_email
+    from agents.poc_plan import POCPlanAgent
+    from agents.email_gen import EmailGeneratorAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if p.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Pipeline not yet complete")
+
+    intelligence = p.get("intelligence", {})
+    prospects = get_prospects(pipeline_id)
+    if not prospects:
+        return {"generated": 0, "results": []}
+
+    sem = asyncio.Semaphore(3)  # cap at 3 concurrent LLM calls (Groq rate-limit safe)
+
+    async def generate_for_prospect(prospect: dict) -> dict:
+        async with sem:
+            result: dict = {"prospect_id": prospect["id"], "name": prospect.get("name", ""), "poc": None, "email": None, "error": None}
+            loop = asyncio.get_running_loop()
+            try:
+                if body.generate_poc and not prospect.get("poc_plan"):
+                    poc = await loop.run_in_executor(None, lambda: POCPlanAgent(client).run(
+                        prospect, intelligence, body.sender_offering or p.get("user_description", ""), p["company_name"]
+                    ))
+                    update_prospect_poc(prospect["id"], poc)
+                    prospect["poc_plan"] = poc
+                    result["poc"] = poc
+
+                if body.generate_email:
+                    poc_plan = prospect.get("poc_plan") or {}
+                    email = await loop.run_in_executor(None, lambda: EmailGeneratorAgent(client).run(
+                        prospect, poc_plan, intelligence, p["company_name"],
+                        body.sender_name, body.sender_company,
+                        body.sender_offering or p.get("user_description", ""),
+                        body.tone, word_limit=body.word_limit,
+                    ))
+                    save_email(pipeline_id, prospect["id"], email)
+                    result["email"] = email
+            except Exception as e:
+                result["error"] = str(e)
+                logger.error(f"bulk-generate failed for {prospect['id']}: {e}")
+            return result
+
+    tasks = [generate_for_prospect(pr) for pr in prospects]
+    results = await asyncio.gather(*tasks)
+    succeeded = sum(1 for r in results if not r["error"])
+    return {"generated": succeeded, "total": len(prospects), "results": list(results)}
+
 @app.get("/api/v2/trends")
 async def get_trends():
     from pipeline import generate_market_trends
@@ -451,12 +514,12 @@ async def generate_linkedin_posts(body: LinkedInGenerateRequest):
         })
 
     try:
-        trends_data = await generate_market_trends(groq_client, vector_agent)
+        trends_data = await generate_market_trends(client, vector_agent)
         trends_summary = trends_data.get("overall_summary", "")
     except Exception:
         trends_summary = ""
 
-    agent = LinkedInPostAgent(groq_client)
+    agent = LinkedInPostAgent(client)
     posts = agent.run(
         company_profile=company_profile,
         past_posts=past_posts,
@@ -512,7 +575,7 @@ async def refine_linkedin_post(post_id: str, body: LinkedInRefineRequest):
     messages.append({"role": "user", "content": body.message})
 
     try:
-        resp = groq_client.chat.completions.create(
+        resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=600,
             temperature=0.65,
@@ -550,8 +613,8 @@ async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
     messages.append({"role": "user", "content": body.message})
 
     try:
-        from db import get_email_by_id as _get_email, update_email_field
-        resp = groq_client.chat.completions.create(
+        from db import update_email_field, save_email_refinement, get_email_refinements
+        resp = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=800,
             temperature=0.6,
@@ -559,6 +622,8 @@ async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
         )
         new_content = resp.choices[0].message.content.strip()
         update_email_field(email_id, "body", new_content)
+        save_email_refinement(email_id, "user", body.message)
+        save_email_refinement(email_id, "assistant", new_content)
         new_history = history + [
             {"role": "user", "content": body.message},
             {"role": "assistant", "content": new_content},
@@ -566,6 +631,25 @@ async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
         return {"content": new_content, "history": new_history, "field": "body"}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Email refine failed: {e}")
+
+
+@app.get("/api/v2/email/{email_id}/refinements")
+async def get_email_refinements_endpoint(email_id: str):
+    from db import get_email_refinements
+    return get_email_refinements(email_id)
+
+
+class ProspectStatusRequest(BaseModel):
+    status: str
+
+@app.patch("/api/v2/prospects/{prospect_id}/status")
+async def update_prospect_status_endpoint(prospect_id: str, body: ProspectStatusRequest):
+    from db import update_prospect_status
+    try:
+        update_prospect_status(prospect_id, body.status)
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # --- legacy v1 endpoints (kept for backward compatibility) ---

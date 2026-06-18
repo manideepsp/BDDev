@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getMarketTrends, TrendsResponse, TrendsCluster } from '@/lib/api';
+import { getMarketTrends, listPipelines, TrendsResponse, TrendsCluster, Pipeline } from '@/lib/api';
 
 const SECTOR_ICONS: Record<string, string> = {
   fintech: '💳', finance: '💳', banking: '🏦',
@@ -27,7 +27,7 @@ function getSectorIcon(theme: string): string {
   return '📊';
 }
 
-function ClusterCard({ cluster, index }: { cluster: TrendsCluster; index: number }) {
+function ClusterCard({ cluster, index, pipelineMap }: { cluster: TrendsCluster; index: number; pipelineMap: Record<string, string> }) {
   const icon = getSectorIcon(cluster.theme);
   return (
     <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-slide-up anim-delay-${Math.min(index + 1, 4) as 1|2|3|4}`}>
@@ -39,11 +39,16 @@ function ClusterCard({ cluster, index }: { cluster: TrendsCluster; index: number
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-slate-900 text-base leading-snug">{cluster.theme}</h3>
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {cluster.companies.map(c => (
-              <span key={c} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">
-                {c}
-              </span>
-            ))}
+            {cluster.companies.map(c => {
+              const pid = pipelineMap[c.toLowerCase()];
+              return pid ? (
+                <Link key={c} href={`/pipeline/${pid}`} className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium hover:bg-indigo-100 transition-colors border border-indigo-100">
+                  {c} →
+                </Link>
+              ) : (
+                <span key={c} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">{c}</span>
+              );
+            })}
           </div>
         </div>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1 flex-shrink-0">
@@ -116,10 +121,18 @@ export default function TrendsPage() {
   const [data, setData] = useState<TrendsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pipelineMap, setPipelineMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    getMarketTrends()
-      .then(setData)
+    Promise.all([getMarketTrends(), listPipelines()])
+      .then(([trends, pipelines]) => {
+        setData(trends);
+        const map: Record<string, string> = {};
+        for (const p of pipelines as Pipeline[]) {
+          if (p.status === 'complete') map[p.company_name.toLowerCase()] = p.id;
+        }
+        setPipelineMap(map);
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -229,7 +242,7 @@ export default function TrendsPage() {
                 {/* Cluster cards */}
                 <div className="space-y-4">
                   {data.clusters.map((cluster, i) => (
-                    <ClusterCard key={i} cluster={cluster} index={i} />
+                    <ClusterCard key={i} cluster={cluster} index={i} pipelineMap={pipelineMap} />
                   ))}
                 </div>
 

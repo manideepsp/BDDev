@@ -289,6 +289,10 @@ export interface PipelineProspect {
   contact_angle: string;
   confidence: 'high' | 'medium' | 'low';
   poc_plan?: POCPlan;
+  seniority?: string;
+  role_category?: string;
+  location?: string;
+  prospect_status?: string;
 }
 
 export interface POCPlan {
@@ -451,6 +455,30 @@ export async function generatePitchAssets(
   });
 }
 
+export interface BulkGenerateRequest {
+  sender_name?: string;
+  sender_company?: string;
+  sender_offering?: string;
+  tone?: 'professional' | 'conversational' | 'bold';
+  word_limit?: number;
+  generate_poc?: boolean;
+  generate_email?: boolean;
+}
+
+export interface BulkGenerateResult {
+  generated: number;
+  total: number;
+  results: { prospect_id: string; name: string; poc: POCPlan | null; email: OutreachEmail | null; error: string | null }[];
+}
+
+export async function bulkGenerate(pipelineId: string, data: BulkGenerateRequest): Promise<BulkGenerateResult> {
+  return request(`/api/v2/pipeline/${pipelineId}/bulk-generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function submitFeedback(data: FeedbackRequest): Promise<{ id: string; ok: boolean }> {
   return request('/api/feedback', {
     method: 'POST',
@@ -514,6 +542,18 @@ export async function refineLinkedInPost(postId: string, data: RefineRequest): P
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+}
+
+export async function updateProspectStatusV2(prospectId: string, status: string): Promise<void> {
+  await request(`/api/v2/prospects/${prospectId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getEmailRefinements(emailId: string): Promise<{ role: string; content: string; created_at: string }[]> {
+  return request(`/api/v2/email/${emailId}/refinements`);
 }
 
 export async function refineEmail(emailId: string, data: RefineRequest): Promise<RefineResponse & { field: string }> {

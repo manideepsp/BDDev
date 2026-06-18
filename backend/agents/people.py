@@ -30,12 +30,18 @@ class PeopleSwarmAgent:
         self.client = groq_client
 
     async def run(self, company_name: str, seed_people: list[dict], user_description: str,
-                  max_people: int = 6) -> dict:
+                  max_people: int = 6, concurrency: int = 4) -> dict:
         people = self._discover(company_name, seed_people, max_people)
         if not people:
             return {"people": [], "swarm_size": 0, "error": "No people found"}
 
-        tasks = [self._enrich(p, company_name, user_description) for p in people]
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _guarded(p):
+            async with sem:
+                return await self._enrich(p, company_name, user_description)
+
+        tasks = [_guarded(p) for p in people]
         enriched = await asyncio.gather(*tasks, return_exceptions=True)
         out = []
         for original, result in zip(people, enriched):

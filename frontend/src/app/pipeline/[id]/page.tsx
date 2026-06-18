@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPipeline, continuePipeline, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
+import { getPipeline, continuePipeline, bulkGenerate, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
   EnrichedPerson, GatheredPost, GatheredJob } from '@/lib/api';
 
 const PIPELINE_STAGES = ['gathering', 'people', 'keywords', 'researching', 'indexing', 'awaiting_input', 'insights', 'embedding'] as const;
@@ -635,6 +635,8 @@ export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [continued, setContinued] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ generated: number; total: number } | null>(null);
 
   const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
 
@@ -808,9 +810,35 @@ export default function PipelinePage() {
       {/* Prospects grid */}
       {prospects.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">
-            Identified Prospects ({prospects.length})
-          </p>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Identified Prospects ({prospects.length})
+            </p>
+            {pipeline?.status === 'complete' && (
+              <button
+                onClick={async () => {
+                  setBulkLoading(true);
+                  setBulkResult(null);
+                  try {
+                    const r = await bulkGenerate(id, { generate_poc: true, generate_email: true, tone: 'professional', word_limit: 150 });
+                    setBulkResult({ generated: r.generated, total: r.total });
+                    await fetchPipeline();
+                  } catch { /* silently surface via toast-less indicator */ }
+                  finally { setBulkLoading(false); }
+                }}
+                disabled={bulkLoading}
+                className="text-sm bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                {bulkLoading && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                {bulkLoading ? 'Generating for all…' : '⚡ Generate All POC + Emails'}
+              </button>
+            )}
+          </div>
+          {bulkResult && (
+            <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-800">
+              ✓ Generated for {bulkResult.generated} of {bulkResult.total} prospects — click any card to view.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {prospects.map(prospect => (
               <div key={prospect.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-indigo-200 transition-colors">
@@ -821,9 +849,26 @@ export default function PipelinePage() {
                   </div>
                   <ConfidenceBadge confidence={prospect.confidence} />
                 </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {prospect.seniority && prospect.seniority !== 'Unknown' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium">{prospect.seniority}</span>
+                  )}
+                  {prospect.role_category && prospect.role_category !== 'Other' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{prospect.role_category}</span>
+                  )}
+                  {prospect.location && prospect.location !== 'Unknown' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">📍 {prospect.location}</span>
+                  )}
+                  {prospect.prospect_status && prospect.prospect_status !== 'new' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium capitalize">{prospect.prospect_status.replace('_', ' ')}</span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-600 mb-2">{prospect.relevance}</p>
                 {prospect.contact_angle && (
                   <p className="text-xs text-indigo-600 italic mb-4">💡 {prospect.contact_angle}</p>
+                )}
+                {prospect.poc_plan && (
+                  <p className="text-[10px] text-emerald-600 font-medium mb-2">✓ POC plan ready</p>
                 )}
                 <Link
                   href={`/pipeline/${id}/prospect/${prospect.id}`}

@@ -1,4 +1,4 @@
-import sqlite3, json, os
+import sqlite3, json, os, uuid
 from datetime import datetime
 
 DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "nexus.db"))
@@ -68,6 +68,15 @@ def init_db():
             created_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS email_refinements (
+            id TEXT PRIMARY KEY,
+            email_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT,
+            FOREIGN KEY (email_id) REFERENCES pipeline_emails(id)
+        );
+
         CREATE TABLE IF NOT EXISTS linkedin_posts (
             id TEXT PRIMARY KEY,
             content TEXT NOT NULL,
@@ -93,18 +102,30 @@ _PIPELINE_EXTRA_COLUMNS = {
     "gathered_json": "TEXT",
     "human_input": "TEXT",
 }
+_PROSPECT_EXTRA_COLUMNS = {
+    "prospect_status": "TEXT",
+    "seniority": "TEXT",
+    "role_category": "TEXT",
+    "location": "TEXT",
+}
 _ALLOWED_COL_TYPES = {"TEXT", "INTEGER", "REAL"}
 
 def _ensure_columns(conn):
-    existing = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
+    existing_pipeline = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
     for col, coltype in _PIPELINE_EXTRA_COLUMNS.items():
-        if col in existing:
+        if col in existing_pipeline:
             continue
-        # Defensive validation: SQLite cannot bind DDL identifiers/types as
-        # parameters, so guard against anything that isn't a plain identifier.
         if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
             raise ValueError(f"Unsafe column definition: {col} {coltype}")
         conn.execute(f"ALTER TABLE pipelines ADD COLUMN {col} {coltype}")  # nosec B608
+
+    existing_prospect = {r[1] for r in conn.execute("PRAGMA table_info(pipeline_prospects)").fetchall()}
+    for col, coltype in _PROSPECT_EXTRA_COLUMNS.items():
+        if col in existing_prospect:
+            continue
+        if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
+            raise ValueError(f"Unsafe column definition: {col} {coltype}")
+        conn.execute(f"ALTER TABLE pipeline_prospects ADD COLUMN {col} {coltype}")  # nosec B608
 
 def create_pipeline(id, company_name, company_url, user_description, sender_name=None, sender_company=None,
                     linkedin_url=None, deal_size=None, priority=None, notes=None):
@@ -180,8 +201,17 @@ def save_prospects(pipeline_id, prospects):
     with get_conn() as conn:
         for p in prospects:
             conn.execute(
-                "INSERT OR REPLACE INTO pipeline_prospects (id,pipeline_id,name,title,relevance,contact_angle,confidence) VALUES (?,?,?,?,?,?,?)",
-                (p["id"], pipeline_id, p.get("name",""), p.get("title",""), p.get("relevance",""), p.get("contact_angle",""), p.get("confidence","medium"))
+                "INSERT OR REPLACE INTO pipeline_prospects "
+                "(id,pipeline_id,name,title,relevance,contact_angle,confidence,seniority,role_category,location,prospect_status) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    p["id"], pipeline_id,
+                    p.get("name", ""), p.get("title", ""),
+                    p.get("relevance", ""), p.get("contact_angle", ""),
+                    p.get("confidence", "medium"),
+                    p.get("seniority", ""), p.get("role_category", ""),
+                    p.get("location", ""), p.get("prospect_status", "new"),
+                )
             )
 
 def get_prospects(pipeline_id):
@@ -333,6 +363,36 @@ def update_email_field(email_id: str, field: str, value: str):
         raise ValueError(f"Field '{field}' is not allowed")
     with get_conn() as conn:
         conn.execute(f"UPDATE pipeline_emails SET {field}=? WHERE id=?", (value, email_id))
+
+
+# ── Email Refinement History ───────────────────────────────────────────────────
+
+def save_email_refinement(email_id: str, role: str, content: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO email_refinements (id, email_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), email_id, role, content, datetime.now().isoformat())
+        )
+
+
+def get_email_refinements(email_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT role, content, created_at FROM email_refinements WHERE email_id=? ORDER BY created_at",
+            (email_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ── Prospect Status ────────────────────────────────────────────────────────────
+
+_ALLOWED_PROSPECT_STATUSES = {"new", "contacted", "in_conversation", "won", "lost", "deprioritized"}
+
+def update_prospect_status(prospect_id: str, status: str):
+    if status not in _ALLOWED_PROSPECT_STATUSES:
+        raise ValueError(f"Invalid status: {status}")
+    with get_conn() as conn:
+        conn.execute("UPDATE pipeline_prospects SET prospect_status=? WHERE id=?", (status, prospect_id))
 
 
 def get_stats():

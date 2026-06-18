@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   getPipeline, getPipelineProspects, generatePOCPlan, generateEmailV2, generatePitchAssets,
-  refineEmail,
+  refineEmail, updateProspectStatusV2,
   Pipeline, PipelineProspect, POCPlan, OutreachEmail, PitchAssets,
 } from '@/lib/api';
 import Feedback from '@/components/Feedback';
@@ -225,6 +225,7 @@ export default function ProspectPage() {
 
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [prospect, setProspect] = useState<PipelineProspect | null>(null);
+  const [prospectStatus, setProspectStatus] = useState<string>('new');
   const [pocPlan, setPocPlan] = useState<POCPlan | null>(null);
   const [emails, setEmails] = useState<OutreachEmail[]>([]);
   const [emailBodies, setEmailBodies] = useState<Record<string, string>>({});
@@ -260,6 +261,7 @@ export default function ProspectPage() {
       const found = prospects.find(pr => pr.id === prospectId);
       if (!found) { router.push(`/pipeline/${pipelineId}`); return; }
       setProspect(found);
+      setProspectStatus(found.prospect_status ?? 'new');
       if (found.poc_plan) setPocPlan(found.poc_plan);
 
       // Pre-fill form from pipeline data
@@ -382,10 +384,39 @@ export default function ProspectPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-900">{prospect.name}</h1>
               <p className="text-slate-500 text-sm mt-0.5">{prospect.title} · {pipeline.company_name}</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {prospect.seniority && prospect.seniority !== 'Unknown' && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">{prospect.seniority}</span>
+                )}
+                {prospect.role_category && prospect.role_category !== 'Other' && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">{prospect.role_category}</span>
+                )}
+                {prospect.location && prospect.location !== 'Unknown' && (
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">📍 {prospect.location}</span>
+                )}
+              </div>
             </div>
-            <span className={`text-xs font-medium px-3 py-1 rounded-full ${confidenceColors[prospect.confidence] ?? confidenceColors.medium}`}>
-              {prospect.confidence} confidence
-            </span>
+            <div className="flex items-center gap-2">
+              <select
+                value={prospectStatus}
+                onChange={async e => {
+                  const s = e.target.value;
+                  setProspectStatus(s);
+                  await updateProspectStatusV2(prospect.id, s).catch(() => null);
+                }}
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 bg-white"
+              >
+                <option value="new">New</option>
+                <option value="contacted">Contacted</option>
+                <option value="in_conversation">In Conversation</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+                <option value="deprioritized">Deprioritized</option>
+              </select>
+              <span className={`text-xs font-medium px-3 py-1 rounded-full ${confidenceColors[prospect.confidence] ?? confidenceColors.medium}`}>
+                {prospect.confidence} confidence
+              </span>
+            </div>
           </div>
           {prospect.contact_angle && (
             <div className="mt-3 flex items-start gap-2">
@@ -398,6 +429,15 @@ export default function ProspectPage() {
           {prospect.relevance && (
             <p className="text-sm text-slate-600 mt-2 pt-2 border-t border-slate-100">{prospect.relevance}</p>
           )}
+          <div className="mt-3 flex items-center justify-end">
+            <CopyBtn
+              text={[
+                `Name,Title,Company,Contact Angle,Confidence,Status`,
+                `"${prospect.name}","${prospect.title}","${pipeline.company_name}","${prospect.contact_angle}","${prospect.confidence}","${prospectStatus}"`,
+              ].join('\n')}
+              label="Copy as CSV"
+            />
+          </div>
         </div>
       </div>
 
