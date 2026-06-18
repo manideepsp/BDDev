@@ -269,6 +269,11 @@ export interface CompanyProfile {
   case_studies: string;
   usps: string;
   engagement_models: string[];
+  // Brand Voice
+  brand_voice_tone?: string;       // preferred default tone: professional|conversational|bold|thought-leader
+  brand_voice_rules?: string;      // writing rules and dos/don'ts
+  brand_voice_example?: string;    // example post/email the team likes
+  brand_voice_forbidden?: string;  // words/phrases to never use
 }
 
 export interface FeedbackRequest {

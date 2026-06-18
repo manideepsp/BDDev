@@ -53,6 +53,36 @@ def _build_company_profile_summary(company_profile: dict | None) -> str:
     return "\n".join(parts) if parts else "No company profile details available."
 
 
+def _build_brand_voice_block(company_profile: dict | None) -> str:
+    if not company_profile:
+        return ""
+    lines = []
+    tone = company_profile.get("brand_voice_tone")
+    rules = company_profile.get("brand_voice_rules", "").strip()
+    forbidden = company_profile.get("brand_voice_forbidden", "").strip()
+    example = company_profile.get("brand_voice_example", "").strip()
+
+    if not (tone or rules or forbidden or example):
+        return ""
+
+    lines.append("BRAND VOICE INSTRUCTIONS (MUST follow — highest priority):")
+    if tone:
+        tone_descs = {
+            "professional": "Polished, executive-level. Authoritative without being cold.",
+            "conversational": "Warm, direct, peer-to-peer. Contractions fine. Never chummy.",
+            "bold": "Provocative, insight-led. Opens with a sharp number or observation.",
+            "thought-leader": "Opinionated, educational. Shares a POV, backs it with specifics.",
+        }
+        lines.append(f"  Tone: {tone} — {tone_descs.get(tone, '')}")
+    if rules:
+        lines.append(f"  Writing rules: {rules}")
+    if forbidden:
+        lines.append(f"  NEVER use these words/phrases: {forbidden}")
+    if example:
+        lines.append(f"  STYLE REFERENCE — match this voice (do NOT copy):\n  ---\n  {example[:600]}\n  ---")
+    return "\n".join(lines)
+
+
 def _build_pipeline_context(pipeline_summaries: list[dict]) -> str:
     if not pipeline_summaries:
         return "No pipeline intelligence available."
@@ -116,13 +146,14 @@ class LinkedInPostAgent:
         trends_block = trends_summary.strip() if trends_summary else "No market trends data available."
 
         n_companies = len(pipeline_summaries)
+        brand_voice_block = _build_brand_voice_block(company_profile)
 
         prompt = f"""You are a LinkedIn content strategist for a B2B company. Generate {n} distinct LinkedIn posts.
 
 COMPANY PROFILE:
 {company_profile_summary}
 
-MARKET INTELLIGENCE (distilled from {n_companies} researched companies):
+{brand_voice_block + chr(10) if brand_voice_block else ""}MARKET INTELLIGENCE (distilled from {n_companies} researched companies):
 {pipeline_context}
 
 MARKET TRENDS:
