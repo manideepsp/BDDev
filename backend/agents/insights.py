@@ -133,6 +133,13 @@ class InsightsAgent:
             context_parts.append(f"KEYWORDS: {json.dumps(keywords)}")
         context = "\n\n".join(context_parts)[:6000]
 
+        # Warn downstream when context is very thin — prevents hallucination
+        data_quality = "rich" if len(context) > 1500 else ("sparse" if len(context) > 400 else "very sparse")
+        if data_quality != "rich":
+            context += f"\n\nDATA QUALITY WARNING: Context is {data_quality} ({len(context)} chars). " \
+                       "Score ICP conservatively. Use low confidence on all pain points. " \
+                       "State 'Unknown' for any field not supported by evidence."
+
         target_context = target_context or {}
         target_block = ""
         if target_context.get("notes"):

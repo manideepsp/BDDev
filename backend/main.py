@@ -253,23 +253,35 @@ async def continue_pipeline(pipeline_id: str, body: ContinueRequest):
         gathered.setdefault("people", {})["people"] = kept
         changed = True
     if body.excluded_items:
+        import hashlib
+
+        def _item_fp(item: dict) -> str:
+            """Stable fingerprint: hash of the item's most identifying text field."""
+            key = (item.get("title") or item.get("url") or item.get("text") or
+                   item.get("snippet") or item.get("content") or str(item))[:120]
+            return hashlib.md5(key.encode()).hexdigest()[:12]  # nosec B324
+
         for source, indices in body.excluded_items.items():
             idx_set = set(indices)
             if source == "posts":
                 items = gathered.get("posts", {}).get("posts", [])
-                gathered.setdefault("posts", {})["posts"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("posts", {})["posts"] = kept
                 changed = True
             elif source == "jobs":
                 items = gathered.get("jobs", {}).get("jobs", [])
-                gathered.setdefault("jobs", {})["jobs"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("jobs", {})["jobs"] = kept
                 changed = True
             elif source == "crawl":
                 items = gathered.get("crawl", {}).get("findings", [])
-                gathered.setdefault("crawl", {})["findings"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("crawl", {})["findings"] = kept
                 changed = True
             elif source == "research":
                 items = gathered.get("research", {}).get("results", [])
-                gathered.setdefault("research", {})["results"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("research", {})["results"] = kept
                 changed = True
     if changed:
         save_gathered(pipeline_id, gathered)
