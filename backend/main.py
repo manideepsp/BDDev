@@ -154,6 +154,39 @@ class FeedbackRequest(BaseModel):
     rating: int
     note: Optional[str] = None
 
+class EmailABRequest(BaseModel):
+    prospect_id: str
+    sender_name: str
+    sender_company: str
+    sender_offering: str
+    tone_a: str = "professional"
+    tone_b: str = "conversational"
+    trigger_event: str = ""
+    linkedin_quote: str = ""
+    word_limit: int = 150
+
+class BulkGenerateRequest(BaseModel):
+    sender_name: str = ""
+    sender_company: str = ""
+    sender_offering: str = ""
+    tone: str = "professional"
+    word_limit: int = 150
+    generate_poc: bool = True
+    generate_email: bool = True
+
+class LinkedInGenerateRequest(BaseModel):
+    persona: str = "auto"
+
+class LinkedInRefineRequest(BaseModel):
+    message: str
+    current_content: str
+    history: List[dict] = []
+
+class EmailRefineRequest(BaseModel):
+    message: str
+    current_content: str
+    history: List[dict] = []
+
 # --- startup ---
 
 from db import init_db
@@ -220,23 +253,35 @@ async def continue_pipeline(pipeline_id: str, body: ContinueRequest):
         gathered.setdefault("people", {})["people"] = kept
         changed = True
     if body.excluded_items:
+        import hashlib
+
+        def _item_fp(item: dict) -> str:
+            """Stable fingerprint: hash of the item's most identifying text field."""
+            key = (item.get("title") or item.get("url") or item.get("text") or
+                   item.get("snippet") or item.get("content") or str(item))[:120]
+            return hashlib.md5(key.encode()).hexdigest()[:12]  # nosec B324
+
         for source, indices in body.excluded_items.items():
             idx_set = set(indices)
             if source == "posts":
                 items = gathered.get("posts", {}).get("posts", [])
-                gathered.setdefault("posts", {})["posts"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("posts", {})["posts"] = kept
                 changed = True
             elif source == "jobs":
                 items = gathered.get("jobs", {}).get("jobs", [])
-                gathered.setdefault("jobs", {})["jobs"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("jobs", {})["jobs"] = kept
                 changed = True
             elif source == "crawl":
                 items = gathered.get("crawl", {}).get("findings", [])
-                gathered.setdefault("crawl", {})["findings"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("crawl", {})["findings"] = kept
                 changed = True
             elif source == "research":
                 items = gathered.get("research", {}).get("results", [])
-                gathered.setdefault("research", {})["results"] = [it for i, it in enumerate(items) if i not in idx_set]
+                kept = [it for i, it in enumerate(items) if i not in idx_set]
+                gathered.setdefault("research", {})["results"] = kept
                 changed = True
     if changed:
         save_gathered(pipeline_id, gathered)
@@ -301,7 +346,7 @@ async def generate_poc_plan(pipeline_id: str, body: POCRequest):
 
 @app.post("/api/v2/pipeline/{pipeline_id}/email")
 async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
-    from db import get_pipeline as db_get_pipeline, get_prospects, save_email
+    from db import get_pipeline as db_get_pipeline, get_prospects, save_email, get_feedback_preferences, get_company_profile
     from agents.email_gen import EmailGeneratorAgent
     p = db_get_pipeline(pipeline_id)
     if not p:
@@ -312,12 +357,16 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
     if not prospect:
         raise HTTPException(status_code=404, detail="Prospect not found")
     poc_plan = prospect.get("poc_plan") or {}
+    feedback_prefs = get_feedback_preferences()
+    brand_voice = get_company_profile() or {}
     try:
         email = EmailGeneratorAgent(client).run(
             prospect, poc_plan, intelligence, p["company_name"],
             body.sender_name, body.sender_company, body.sender_offering, body.tone,
             trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
             word_limit=body.word_limit,
+            feedback_prefs=feedback_prefs,
+            brand_voice=brand_voice,
         )
         save_email(pipeline_id, body.prospect_id, email)
         return email
@@ -329,6 +378,100 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
 async def get_pipeline_emails(pipeline_id: str):
     from db import get_emails
     return get_emails(pipeline_id)
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/email-ab")
+async def generate_ab_emails(pipeline_id: str, body: EmailABRequest):
+    """Generate two email variants (tone A + tone B) in parallel for comparison."""
+    from db import get_pipeline as db_get_pipeline, get_prospects, save_email
+    from agents.email_gen import EmailGeneratorAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    intelligence = p.get("intelligence", {})
+    prospects = get_prospects(pipeline_id)
+    prospect = next((pr for pr in prospects if pr["id"] == body.prospect_id), None)
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    poc_plan = prospect.get("poc_plan") or {}
+
+    from db import get_feedback_preferences
+    feedback_prefs = get_feedback_preferences()
+    loop = asyncio.get_running_loop()
+    agent = EmailGeneratorAgent(client)
+
+    async def gen(tone: str):
+        return await loop.run_in_executor(None, lambda: agent.run(
+            prospect, poc_plan, intelligence, p["company_name"],
+            body.sender_name, body.sender_company, body.sender_offering, tone,
+            trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
+            word_limit=body.word_limit, feedback_prefs=feedback_prefs,
+        ))
+
+    try:
+        email_a, email_b = await asyncio.gather(gen(body.tone_a), gen(body.tone_b))
+        save_email(pipeline_id, body.prospect_id, email_a)
+        save_email(pipeline_id, body.prospect_id, email_b)
+        return {"variant_a": email_a, "variant_b": email_b, "tone_a": body.tone_a, "tone_b": body.tone_b}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"A/B email generation failed: {e}")
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/bulk-generate")
+async def bulk_generate(pipeline_id: str, body: BulkGenerateRequest):
+    """Generate POC plans and/or emails for ALL prospects in a pipeline, concurrently."""
+    from db import get_pipeline as db_get_pipeline, get_prospects, update_prospect_poc, save_email, get_feedback_preferences
+    from agents.poc_plan import POCPlanAgent
+    from agents.email_gen import EmailGeneratorAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if p.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Pipeline not yet complete")
+
+    intelligence = p.get("intelligence", {})
+    prospects = get_prospects(pipeline_id)
+    if not prospects:
+        return {"generated": 0, "results": []}
+    feedback_prefs = get_feedback_preferences()
+
+    sem = asyncio.Semaphore(3)  # cap at 3 concurrent LLM calls (Groq rate-limit safe)
+
+    async def generate_for_prospect(prospect: dict) -> dict:
+        async with sem:
+            result: dict = {"prospect_id": prospect["id"], "name": prospect.get("name", ""), "poc": None, "email": None, "error": None}
+            loop = asyncio.get_running_loop()
+            try:
+                if body.generate_poc and not prospect.get("poc_plan"):
+                    poc = await loop.run_in_executor(None, lambda: POCPlanAgent(client).run(
+                        prospect, intelligence, body.sender_offering or p.get("user_description", ""), p["company_name"]
+                    ))
+                    update_prospect_poc(prospect["id"], poc)
+                    prospect["poc_plan"] = poc
+                    result["poc"] = poc
+
+                if body.generate_email:
+                    poc_plan = prospect.get("poc_plan") or {}
+                    email = await loop.run_in_executor(None, lambda: EmailGeneratorAgent(client).run(
+                        prospect, poc_plan, intelligence, p["company_name"],
+                        body.sender_name, body.sender_company,
+                        body.sender_offering or p.get("user_description", ""),
+                        body.tone, word_limit=body.word_limit,
+                        feedback_prefs=feedback_prefs,
+                    ))
+                    save_email(pipeline_id, prospect["id"], email)
+                    result["email"] = email
+            except Exception as e:
+                result["error"] = str(e)
+                logger.error(f"bulk-generate failed for {prospect['id']}: {e}")
+            return result
+
+    tasks = [generate_for_prospect(pr) for pr in prospects]
+    results = await asyncio.gather(*tasks)
+    succeeded = sum(1 for r in results if not r["error"])
+    return {"generated": succeeded, "total": len(prospects), "results": list(results)}
 
 @app.get("/api/v2/trends")
 async def get_trends():
@@ -388,6 +531,398 @@ async def submit_feedback(body: FeedbackRequest):
 async def read_feedback(pipeline_id: str):
     from db import get_feedback
     return get_feedback(pipeline_id)
+
+# --- LinkedIn Posts ---
+
+@app.post("/api/v2/linkedin/generate")
+async def generate_linkedin_posts(body: LinkedInGenerateRequest):
+    from db import (get_company_profile, list_pipelines as db_list_pipelines,
+                    get_pipeline as db_get_pipeline, list_linkedin_posts, save_linkedin_post)
+    from agents.linkedin_post import LinkedInPostAgent
+    from pipeline import generate_market_trends
+
+    company_profile = get_company_profile()
+    all_posts = list_linkedin_posts()
+    past_posts = all_posts[:5]
+
+    pipelines = db_list_pipelines()
+    pipeline_summaries = []
+    for pl in pipelines:
+        if pl.get("status") != "complete":
+            continue
+        full = db_get_pipeline(pl["id"])
+        if not full:
+            continue
+        intel = full.get("intelligence") or {}
+        gathered = full.get("gathered") or {}
+
+        raw_pain = intel.get("pain_points", [])
+        pain_points = []
+        for pp in raw_pain[:3]:
+            if isinstance(pp, dict):
+                pain_points.append(pp.get("title") or pp.get("description") or str(pp))
+            else:
+                pain_points.append(str(pp))
+
+        raw_posts = (gathered.get("posts", {}).get("posts", [])
+                     if isinstance(gathered.get("posts"), dict) else gathered.get("posts", []))
+        gathered_posts = [
+            {"title": p.get("title", ""), "text": p.get("text", p.get("content", ""))[:200]}
+            for p in (raw_posts or [])[:5]
+        ]
+        industry = (intel.get("company_overview") or {}).get("industry", "")
+        pipeline_summaries.append({
+            "company_name": full.get("company_name", ""),
+            "industry": industry,
+            "pain_points": pain_points,
+            "key_keywords": intel.get("key_keywords", [])[:5],
+            "recent_developments": intel.get("recent_developments", [])[:2],
+            "gathered_posts": gathered_posts,
+        })
+
+    try:
+        trends_data = await generate_market_trends(client, vector_agent)
+        trends_summary = trends_data.get("overall_summary", "")
+    except Exception:
+        trends_summary = ""
+
+    agent = LinkedInPostAgent(client)
+    posts = agent.run(
+        company_profile=company_profile,
+        past_posts=past_posts,
+        pipeline_summaries=pipeline_summaries,
+        trends_summary=trends_summary,
+        persona=body.persona,
+    )
+    for p in posts:
+        save_linkedin_post(p)
+    return posts
+
+
+@app.get("/api/v2/linkedin/posts")
+async def list_linkedin_posts_endpoint():
+    from db import list_linkedin_posts
+    return list_linkedin_posts()
+
+
+@app.patch("/api/v2/linkedin/posts/{post_id}/status")
+async def update_post_status(post_id: str, body: dict):
+    from db import update_linkedin_post_status
+    status = body.get("status", "draft")
+    update_linkedin_post_status(post_id, status)
+    return {"ok": True}
+
+
+@app.delete("/api/v2/linkedin/posts/{post_id}")
+async def delete_post(post_id: str):
+    from db import delete_linkedin_post
+    delete_linkedin_post(post_id)
+    return {"ok": True}
+
+
+@app.post("/api/v2/linkedin/posts/{post_id}/refine")
+async def refine_linkedin_post(post_id: str, body: LinkedInRefineRequest):
+    from db import list_linkedin_posts, update_linkedin_post_content
+
+    posts = list_linkedin_posts()
+    post = next((p for p in posts if p["id"] == post_id), None)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    history = body.history or []
+    messages = [
+        {"role": "system", "content": (
+            "You are a LinkedIn content editor. The user will ask you to refine a LinkedIn post. "
+            "Return ONLY the revised post text — no commentary, no JSON, no markdown fences. "
+            "Keep it under 1300 characters. Preserve the author's voice."
+        )},
+        {"role": "user", "content": f"Here is the current post:\n\n{body.current_content}"},
+    ]
+    for h in history:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": body.message})
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=600,
+            temperature=0.65,
+            messages=messages,
+        )
+        new_content = resp.choices[0].message.content.strip()
+        update_linkedin_post_content(post_id, new_content)
+        new_history = history + [
+            {"role": "user", "content": body.message},
+            {"role": "assistant", "content": new_content},
+        ]
+        return {"content": new_content, "history": new_history}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Refine failed: {e}")
+
+
+@app.post("/api/v2/email/{email_id}/refine")
+async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
+    from db import get_email_by_id, update_email_field
+
+    email = get_email_by_id(email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    history = body.history or []
+    messages = [
+        {"role": "system", "content": (
+            "You are a B2B email copywriter. Refine the email based on user instructions. "
+            "Return ONLY the revised email text — no JSON, no markdown, no commentary."
+        )},
+        {"role": "user", "content": f"Current email:\n\n{body.current_content}"},
+    ]
+    for h in history:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": body.message})
+
+    try:
+        from db import update_email_field, save_email_refinement, get_email_refinements
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=800,
+            temperature=0.6,
+            messages=messages,
+        )
+        new_content = resp.choices[0].message.content.strip()
+        update_email_field(email_id, "body", new_content)
+        save_email_refinement(email_id, "user", body.message)
+        save_email_refinement(email_id, "assistant", new_content)
+        new_history = history + [
+            {"role": "user", "content": body.message},
+            {"role": "assistant", "content": new_content},
+        ]
+        return {"content": new_content, "history": new_history, "field": "body"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Email refine failed: {e}")
+
+
+@app.get("/api/v2/pipeline/{pipeline_id}/profile-suggestions")
+async def suggest_profile_updates(pipeline_id: str):
+    """Infer company profile field suggestions from completed pipeline intelligence."""
+    from db import get_pipeline as db_get_pipeline, get_company_profile
+    p = db_get_pipeline(pipeline_id)
+    if not p or p.get("status") != "complete":
+        raise HTTPException(status_code=404, detail="Pipeline not found or not complete")
+
+    intelligence = p.get("intelligence", {})
+    existing_profile = get_company_profile() or {}
+    bd_opps = intelligence.get("bd_opportunities", [])[:3]
+    pain_titles = [
+        (pp.get("title") if isinstance(pp, dict) else str(pp))
+        for pp in (intelligence.get("pain_points") or [])[:3]
+    ]
+    tech_stack = intelligence.get("tech_stack", {})
+    tech_gaps = tech_stack.get("gaps", []) if isinstance(tech_stack, dict) else []
+
+    user = f"""Based on a completed BD intelligence report for {p['company_name']}, suggest improvements
+to the seller's company profile that would strengthen future analyses.
+
+WHAT THE SELLER CURRENTLY SAYS ABOUT THEMSELVES:
+  Services: {', '.join(existing_profile.get('services', []) or ['(not set)'])}
+  Industries: {', '.join(existing_profile.get('industries', []) or ['(not set)'])}
+  Technologies: {existing_profile.get('technologies', '(not set)')}
+  USPs: {existing_profile.get('usps', '(not set)')}
+
+WHAT RESONATED IN THIS ANALYSIS:
+  BD opportunities identified: {'; '.join(bd_opps)}
+  Pain points matched: {'; '.join(pain_titles)}
+  Tech gaps the seller could fill: {'; '.join(tech_gaps)}
+
+TASK: Suggest specific, additive improvements to the seller's profile based on what mattered in this analysis.
+Return ONLY this JSON:
+{{
+  "suggested_services": ["Service 1 to add or refine"],
+  "suggested_industries": ["Industry tag to add"],
+  "suggested_technologies": "Technologies or platforms to mention",
+  "suggested_usps": "USP angle that would have been relevant here",
+  "suggested_case_study": "Type of case study that would have been persuasive",
+  "reasoning": "One sentence: why these suggestions are grounded in this specific analysis"
+}}"""
+
+    try:
+        msg = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=600,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": user}],
+        )
+        from utils import extract_json
+        return extract_json(msg.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Profile suggestion failed: {e}")
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/competitive-analysis")
+async def run_competitive_analysis(pipeline_id: str):
+    """Run competitive intelligence analysis for a completed pipeline."""
+    from db import get_pipeline as db_get_pipeline, save_competitive_analysis, get_competitive_analysis
+    from agents.competitive import CompetitiveIntelligenceAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if p.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Pipeline not complete")
+
+    intelligence = p.get("intelligence", {})
+    user_description = p.get("user_description", "")
+
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: CompetitiveIntelligenceAgent(client).run(
+                p["company_name"], intelligence, user_description
+            )
+        )
+        save_competitive_analysis(pipeline_id, result)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Competitive analysis failed: {e}")
+
+
+@app.get("/api/v2/pipeline/{pipeline_id}/competitive-analysis")
+async def get_competitive_analysis_endpoint(pipeline_id: str):
+    from db import get_competitive_analysis
+    result = get_competitive_analysis(pipeline_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="No competitive analysis found")
+    return result
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/drift-check")
+async def run_drift_check(pipeline_id: str):
+    """Re-check a completed pipeline company for meaningful changes since last analysis."""
+    from db import get_pipeline as db_get_pipeline, save_drift_check, get_drift_checks
+    from agents.drift import DriftDetectorAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if p.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Pipeline not complete — nothing to diff against")
+
+    intelligence = p.get("intelligence", {})
+    last_analyzed = p.get("created_at", "")
+    company_url = p.get("company_url")
+
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: DriftDetectorAgent(client).run(
+                p["company_name"], intelligence, last_analyzed, company_url
+            )
+        )
+        save_drift_check(pipeline_id, result)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Drift check failed: {e}")
+
+
+@app.get("/api/v2/pipeline/{pipeline_id}/drift-checks")
+async def get_drift_history(pipeline_id: str):
+    from db import get_drift_checks
+    return get_drift_checks(pipeline_id)
+
+
+@app.get("/api/v2/email/{email_id}/refinements")
+async def get_email_refinements_endpoint(email_id: str):
+    from db import get_email_refinements
+    return get_email_refinements(email_id)
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/case-study-posts")
+async def generate_case_study_posts(pipeline_id: str):
+    """Generate 3 LinkedIn post formats from a won deal — story arc, data-lead, quick insight."""
+    from db import get_pipeline as db_get_pipeline, get_prospects, get_company_profile
+    from utils import extract_json
+
+    p = db_get_pipeline(pipeline_id)
+    if not p or p.get("status") != "complete":
+        raise HTTPException(status_code=404, detail="Pipeline not found or not complete")
+
+    intelligence = p.get("intelligence", {})
+    prospects = get_prospects(pipeline_id)
+    won_prospects = [pr for pr in prospects if pr.get("prospect_status") == "won"]
+    company_profile = get_company_profile() or {}
+
+    overview = intelligence.get("company_overview") or {}
+    pain_titles = [(pp.get("title") if isinstance(pp, dict) else str(pp))
+                   for pp in (intelligence.get("pain_points") or [])[:2]]
+    bv_forbidden = (company_profile.get("brand_voice_forbidden") or "").strip()
+    bv_rules = (company_profile.get("brand_voice_rules") or "").strip()
+    brand_block = ""
+    if bv_rules or bv_forbidden:
+        brand_block = f"\nBRAND VOICE: {bv_rules or ''} {'NEVER use: ' + bv_forbidden if bv_forbidden else ''}\n"
+
+    contact_line = ""
+    if won_prospects:
+        pr = won_prospects[0]
+        contact_line = f"Won through: {pr.get('name', '')} ({pr.get('title', '')})"
+
+    user = f"""You are a B2B LinkedIn content writer. Generate 3 distinct LinkedIn post formats celebrating a client win.
+{brand_block}
+DEAL DETAILS:
+  Client: {p['company_name']} ({overview.get('industry', '')})
+  Size: {overview.get('size', 'undisclosed')}
+  {contact_line}
+  Problems we solved: {'; '.join(pain_titles) or 'business transformation'}
+  Seller: {company_profile.get('company_name', 'our company')} — {', '.join(company_profile.get('services', []))[:120]}
+
+Generate exactly 3 posts:
+1. STORY ARC: 150–200 words. Problem → solution journey → outcome. Named or anonymised client.
+2. DATA LEAD: 80–120 words. Open with a specific metric/outcome number (estimated if unknown), then the 2-sentence story.
+3. QUICK INSIGHT: 60–80 words. One punchy lesson from this engagement that resonates with similar companies.
+
+Rules:
+- No exclamation marks. No buzzwords (synergy, leverage, solutions, cutting-edge).
+- Write in first person as the company voice.
+- Max 3 hashtags per post, at the very end.
+- The story arc may include a subtle CTA (DM for details).
+
+Return ONLY this JSON:
+{{
+  "posts": [
+    {{"format": "story_arc", "content": "...", "char_count": 0}},
+    {{"format": "data_lead", "content": "...", "char_count": 0}},
+    {{"format": "quick_insight", "content": "...", "char_count": 0}}
+  ]
+}}"""
+
+    try:
+        msg = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=1800,
+            temperature=0.65,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": user}],
+        )
+        data = extract_json(msg.choices[0].message.content)
+        posts = data.get("posts", [])
+        for post in posts:
+            post["char_count"] = len(post.get("content", ""))
+        return {"posts": posts, "company_name": p["company_name"]}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Case study post generation failed: {e}")
+
+
+class ProspectStatusRequest(BaseModel):
+    status: str
+
+@app.patch("/api/v2/prospects/{prospect_id}/status")
+async def update_prospect_status_endpoint(prospect_id: str, body: ProspectStatusRequest):
+    from db import update_prospect_status
+    try:
+        update_prospect_status(prospect_id, body.status)
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 # --- legacy v1 endpoints (kept for backward compatibility) ---
 

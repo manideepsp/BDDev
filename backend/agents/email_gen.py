@@ -37,6 +37,8 @@ class EmailGeneratorAgent:
         trigger_event: str = "",
         linkedin_quote: str = "",
         word_limit: int = 150,
+        feedback_prefs: dict | None = None,
+        brand_voice: dict | None = None,
     ) -> dict:
         tone_desc = TONE_MAP.get(tone, TONE_MAP["professional"])
         pains = pain_point_titles(intelligence, limit=2)
@@ -79,8 +81,41 @@ class EmailGeneratorAgent:
 
         poc_hook = value_prop or poc_plan.get("objective", "")
 
-        prompt = f"""Act as an expert B2B sales copywriter. Write a concise, value-driven cold email to a prospect.
+        # --- Brand Voice: inject from company profile settings ---
+        brand_voice_block = ""
+        if brand_voice:
+            bv_lines = []
+            bv_tone = brand_voice.get("brand_voice_tone")
+            bv_rules = (brand_voice.get("brand_voice_rules") or "").strip()
+            bv_forbidden = (brand_voice.get("brand_voice_forbidden") or "").strip()
+            bv_example = (brand_voice.get("brand_voice_example") or "").strip()
+            if bv_tone or bv_rules or bv_forbidden or bv_example:
+                bv_lines.append("BRAND VOICE (override the tone setting if they conflict):")
+                if bv_tone:
+                    bv_lines.append(f"  Tone style: {bv_tone}")
+                if bv_rules:
+                    bv_lines.append(f"  Rules: {bv_rules}")
+                if bv_forbidden:
+                    bv_lines.append(f"  NEVER use: {bv_forbidden}")
+                if bv_example:
+                    bv_lines.append(f"  Match this style (do NOT copy):\n  ---\n  {bv_example[:400]}\n  ---")
+                brand_voice_block = "\n".join(bv_lines) + "\n\n"
 
+        # --- Memory: inject feedback preferences from past high/low-rated emails ---
+        memory_block = ""
+        if feedback_prefs and feedback_prefs.get("total_rated", 0) > 0:
+            lines = [f"MEMORY — LEARNED PREFERENCES (from {feedback_prefs['total_rated']} rated emails):"]
+            if feedback_prefs.get("preferred_tones"):
+                lines.append(f"  The user rates '{', '.join(feedback_prefs['preferred_tones'])}' emails highest — lean into that style.")
+            if feedback_prefs.get("avoided_tones"):
+                lines.append(f"  The user rates '{', '.join(feedback_prefs['avoided_tones'])}' emails poorly — avoid that style regardless of the selected tone.")
+            if feedback_prefs.get("high_rated_bodies"):
+                lines.append("  EXAMPLE — study the structure, length, and voice of this top-rated email and match it (do NOT copy):")
+                lines.append(f"  ---\n  {feedback_prefs['high_rated_bodies'][0]}\n  ---")
+            memory_block = "\n".join(lines) + "\n\n"
+
+        prompt = f"""Act as an expert B2B sales copywriter. Write a concise, value-driven cold email to a prospect.
+{brand_voice_block}{memory_block}
 MY COMPANY CONTEXT:
 {my_company_context}
 

@@ -176,9 +176,12 @@ Return ONLY JSON: {{"queries": ["...", "..."]}}"""
                 )
                 for h in hits:
                     text = (h.payload or {}).get("text", "")
-                    key = text[:80]
-                    if text and key not in seen:
-                        seen.add(key)
+                    if not text:
+                        continue
+                    # Normalize: lowercase, collapse whitespace, first 120 chars
+                    norm = " ".join(text.lower().split())[:120]
+                    if norm not in seen:
+                        seen.add(norm)
                         out.append(text)
             return out
         except Exception as e:

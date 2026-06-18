@@ -2,8 +2,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPipeline, continuePipeline, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
-  EnrichedPerson, GatheredPost, GatheredJob } from '@/lib/api';
+import { getPipeline, continuePipeline, bulkGenerate, runDriftCheck, runCompetitiveAnalysis,
+  getProfileSuggestions,
+  Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
+  EnrichedPerson, GatheredPost, GatheredJob, DriftResult, CompetitiveAnalysis, ProfileSuggestions } from '@/lib/api';
 
 const PIPELINE_STAGES = ['gathering', 'people', 'keywords', 'researching', 'indexing', 'awaiting_input', 'insights', 'embedding'] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -81,6 +83,9 @@ const SEV_STYLES: Record<string, string> = {
 };
 
 function PainPointCard({ pain }: { pain: PainPoint }) {
+  const [expanded, setExpanded] = useState(false);
+  const evidenceList = pain.evidence ?? [];
+  const visibleEvidence = expanded ? evidenceList : evidenceList.slice(0, 1);
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -94,19 +99,45 @@ function PainPointCard({ pain }: { pain: PainPoint }) {
           </span>
         </div>
       </div>
-      {(pain.evidence ?? []).length > 0 && (
-        <div className="mb-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Evidence</p>
-          <ul className="space-y-1">
-            {pain.evidence.map((e, i) => (
-              <li key={i} className="text-xs text-slate-600 flex gap-2">
-                <span className="text-slate-300 flex-shrink-0">“</span>{e}
-              </li>
+
+      {/* Evidence chain — collapsible */}
+      {evidenceList.length > 0 && (
+        <div className="mb-3 border border-slate-100 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Evidence chain ({evidenceList.length})
+            </span>
+            <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div className="px-3 py-2 space-y-2">
+            {visibleEvidence.map((e, i) => (
+              <div key={i} className="flex gap-2">
+                <span className="text-slate-300 flex-shrink-0 text-sm leading-tight mt-0.5">"</span>
+                <p className="text-xs text-slate-600 leading-relaxed">{e}</p>
+              </div>
             ))}
-          </ul>
+            {expanded && pain.inference && (
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">→ Inference</p>
+                <p className="text-xs text-slate-600 italic">{pain.inference}</p>
+              </div>
+            )}
+            {!expanded && evidenceList.length > 1 && (
+              <button onClick={() => setExpanded(true)} className="text-[10px] text-indigo-500 hover:text-indigo-700 font-medium transition-colors">
+                +{evidenceList.length - 1} more signal{evidenceList.length - 1 > 1 ? 's' : ''} + inference →
+              </button>
+            )}
+          </div>
         </div>
       )}
-      {pain.inference && (
+
+      {!expanded && pain.inference && evidenceList.length === 0 && (
         <div className="mb-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Inference</p>
           <p className="text-xs text-slate-600">{pain.inference}</p>
@@ -141,6 +172,15 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+const ICP_FACTOR_RECS: Record<string, { low: string; mid: string }> = {
+  'Industry Fit':        { low: 'Industry is a stretch — lead with a cross-vertical case study to build credibility.', mid: 'Moderate fit — reference a comparable vertical win early in the pitch.' },
+  'Tech Alignment':      { low: 'Tech stack diverges — start with a discovery call to uncover integration requirements.', mid: 'Partial alignment — offer a lightweight tech audit as the opening move.' },
+  'Company Size':        { low: 'Unusual size band — propose a scoped pilot at reduced investment to lower entry risk.', mid: 'Size is borderline — frame around ROI per headcount to justify deal size.' },
+  'Pain–Service Fit':    { low: 'Pain match is weak — reframe the offering around their stated priorities from research.', mid: 'Moderate pain fit — identify the #1 pain and anchor the pitch solely on it.' },
+  'Budget Probability':  { low: 'Budget signals are absent — start with a cost-saving or ROI framing; propose a $20–40K scoped audit.', mid: 'Budget uncertain — tie proposal to an existing initiative already in flight.' },
+  'Decision Readiness':  { low: 'Decision maker is unclear — invest in multi-threading to map the buying committee.', mid: 'Early in buying cycle — focus on education and a low-commitment next step.' },
+};
+
 function ICPCard({ icp }: { icp: ICPScore }) {
   const b = icp.breakdown ?? ({} as ICPScore['breakdown']);
   const rows: [string, number][] = [
@@ -148,6 +188,16 @@ function ICPCard({ icp }: { icp: ICPScore }) {
     ['Company Size', b.company_size], ['Pain–Service Fit', b.pain_service_fit],
     ['Budget Probability', b.budget_probability], ['Decision Readiness', b.decision_readiness],
   ];
+  // Collect tactical flags for weak factors
+  const tactics = rows
+    .filter(([, v]) => (v || 0) < 65)
+    .map(([label, value]) => ({
+      label,
+      value,
+      rec: value < 45 ? ICP_FACTOR_RECS[label]?.low : ICP_FACTOR_RECS[label]?.mid,
+    }))
+    .filter(t => t.rec);
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
@@ -157,6 +207,23 @@ function ICPCard({ icp }: { icp: ICPScore }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2.5 mb-4">
         {rows.map(([label, value]) => <ScoreBar key={label} label={label} value={value} />)}
       </div>
+      {/* Tactical recommendations for weak sub-scores */}
+      {tactics.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Tactical flags — low sub-scores</p>
+          {tactics.map(t => (
+            <div key={t.label} className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              <span className={`mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                t.value < 45 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+              }`}>{t.value}%</span>
+              <div>
+                <p className="text-[10px] font-semibold text-amber-800">{t.label}</p>
+                <p className="text-xs text-amber-700 mt-0.5">{t.rec}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-3 border-t border-slate-100">
         {icp.recommended_action && (
           <div className="bg-indigo-50 rounded-lg p-2.5">
@@ -176,6 +243,75 @@ function ICPCard({ icp }: { icp: ICPScore }) {
             <p className="text-xs font-medium text-slate-700 mt-0.5">{icp.best_entry_point}</p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Risk warning banner — scans intelligence for BD-relevant risk signals ─────
+
+const RISK_PATTERNS: { pattern: RegExp; label: string; severity: 'high' | 'medium' }[] = [
+  { pattern: /layoff|laid off|reduction in force|redundanc|retrench/i, label: 'Layoff signals detected', severity: 'high' },
+  { pattern: /CEO|CTO|CFO|CPO|VP.*left|chief.*officer.*depart|exec.*resign|stepping down/i, label: 'Executive departure signal', severity: 'high' },
+  { pattern: /down round|funding concern|runway|cash.{0,15}crunch|bankruptcy|restructur/i, label: 'Financial distress signal', severity: 'high' },
+  { pattern: /pivot|rebranding|strategic shift|wind.{0,8}down|sunset|discontinu/i, label: 'Strategic pivot signal', severity: 'medium' },
+  { pattern: /glassdoor|negative review|high turnover|employee.{0,15}concern/i, label: 'Culture risk indicator', severity: 'medium' },
+  { pattern: /lawsuit|regulatory|investigation|SEC|FTC|DOJ|fine|penalty/i, label: 'Legal / regulatory risk', severity: 'medium' },
+];
+
+function detectRisks(intel: NonNullable<Pipeline['intelligence']>): { label: string; severity: 'high' | 'medium'; context: string }[] {
+  const blobs = [
+    ...(intel.recent_developments ?? []),
+    intel.competitive_landscape?.differentiators ?? '',
+    intel.company_overview?.description ?? '',
+    ...(intel.pain_points ?? []).map(p => `${p.inference} ${(p.evidence ?? []).join(' ')}`),
+    ...(intel.bd_opportunities ?? []),
+  ].join(' ');
+
+  const found: { label: string; severity: 'high' | 'medium'; context: string }[] = [];
+  const seen = new Set<string>();
+  for (const { pattern, label, severity } of RISK_PATTERNS) {
+    if (seen.has(label)) continue;
+    const match = blobs.match(pattern);
+    if (match) {
+      seen.add(label);
+      const idx = blobs.toLowerCase().indexOf(match[0].toLowerCase());
+      const snippet = blobs.slice(Math.max(0, idx - 30), idx + 80).replace(/\n/g, ' ').trim();
+      found.push({ label, severity, context: snippet });
+    }
+  }
+  return found;
+}
+
+function RiskBanner({ intel }: { intel: NonNullable<Pipeline['intelligence']> }) {
+  const risks = detectRisks(intel);
+  if (risks.length === 0) return null;
+  const highCount = risks.filter(r => r.severity === 'high').length;
+  return (
+    <div className={`rounded-xl border p-4 mb-4 ${highCount > 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className="flex items-start gap-3">
+        <span className="text-lg flex-shrink-0">{highCount > 0 ? '⚠️' : '\u{1f4cd}'}</span>
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-semibold mb-2 ${highCount > 0 ? 'text-red-700' : 'text-amber-700'}`}>
+            {highCount > 0 ? 'Risk signals detected — address before pitching' : 'Caution signals — consider in your approach'}
+          </p>
+          <div className="space-y-1.5">
+            {risks.map((r, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5 ${
+                  r.severity === 'high' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                }`}>{r.severity}</span>
+                <div className="min-w-0">
+                  <p className={`text-xs font-medium ${r.severity === 'high' ? 'text-red-800' : 'text-amber-800'}`}>{r.label}</p>
+                  <p className="text-[10px] text-slate-500 truncate">...{r.context}...</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className={`text-[10px] mt-2 ${highCount > 0 ? 'text-red-600' : 'text-amber-600'}`}>
+            Run the Drift Check below to verify these signals before generating pitch assets.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -635,6 +771,13 @@ export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [loading, setLoading] = useState(true);
   const [continued, setContinued] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ generated: number; total: number } | null>(null);
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [driftResult, setDriftResult] = useState<DriftResult | null>(null);
+  const [competitiveLoading, setCompetitiveLoading] = useState(false);
+  const [competitiveResult, setCompetitiveResult] = useState<CompetitiveAnalysis | null>(null);
+  const [profileSuggestions, setProfileSuggestions] = useState<ProfileSuggestions | null>(null);
 
   const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
 
@@ -642,10 +785,16 @@ export default function PipelinePage() {
     try {
       const p = await getPipeline(id);
       setPipeline(p);
-      if (PAUSED(p.status)) setLoading(false);
+      if (PAUSED(p.status)) {
+        setLoading(false);
+        if (p.status === 'complete' && !profileSuggestions) {
+          getProfileSuggestions(id).then(setProfileSuggestions).catch(() => null);
+        }
+      }
     } catch {
       router.push('/');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, router]);
 
   useEffect(() => {
@@ -745,6 +894,9 @@ export default function PipelinePage() {
           {/* Tech stack signals */}
           {intel.tech_stack && <TechStackCard tech={intel.tech_stack} />}
 
+          {/* Risk signals banner */}
+          <RiskBanner intel={intel} />
+
           {/* Evidence-based pain points */}
           {(intel.pain_points ?? []).length > 0 && (
             <div>
@@ -779,6 +931,39 @@ export default function PipelinePage() {
             </div>
           )}
 
+          {/* Profile learnings */}
+          {profileSuggestions && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-5 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <span className="text-xl flex-shrink-0">💡</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-1">Learnings for your company profile</p>
+                  <p className="text-xs text-amber-800 mb-3">{profileSuggestions.reasoning}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    {profileSuggestions.suggested_services.length > 0 && (
+                      <div><span className="font-medium text-amber-900">Services to mention: </span>
+                        <span className="text-amber-800">{profileSuggestions.suggested_services.join(', ')}</span>
+                      </div>
+                    )}
+                    {profileSuggestions.suggested_industries.length > 0 && (
+                      <div><span className="font-medium text-amber-900">Industry tags: </span>
+                        <span className="text-amber-800">{profileSuggestions.suggested_industries.join(', ')}</span>
+                      </div>
+                    )}
+                    {profileSuggestions.suggested_usps && (
+                      <div className="md:col-span-2"><span className="font-medium text-amber-900">USP angle: </span>
+                        <span className="text-amber-800">{profileSuggestions.suggested_usps}</span>
+                      </div>
+                    )}
+                  </div>
+                  <Link href="/settings" className="mt-3 inline-block text-xs text-amber-700 hover:text-amber-900 font-medium underline transition-colors">
+                    Update your profile →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* People swarm + posts + jobs signals */}
           <SignalSections people={intel.people} posts={intel.posts} jobs={intel.jobs} />
 
@@ -802,15 +987,155 @@ export default function PipelinePage() {
               </div>
             </div>
           )}
+          {/* Competitive Intelligence */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Competitive Intelligence</p>
+              {pipeline?.status === 'complete' && (
+                <button
+                  onClick={async () => {
+                    setCompetitiveLoading(true);
+                    try { setCompetitiveResult(await runCompetitiveAnalysis(id)); }
+                    catch { /* silent */ }
+                    finally { setCompetitiveLoading(false); }
+                  }}
+                  disabled={competitiveLoading}
+                  className="text-sm border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs"
+                >
+                  {competitiveLoading && <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
+                  {competitiveLoading ? 'Analysing…' : '⚔️ Run Competitive Analysis'}
+                </button>
+              )}
+            </div>
+            {competitiveResult && (
+              <div className="space-y-3 animate-fade-in">
+                <div className={`bg-white rounded-xl border shadow-sm p-4 ${
+                  competitiveResult.displacement_risk === 'high' ? 'border-red-200' :
+                  competitiveResult.displacement_risk === 'medium' ? 'border-amber-200' : 'border-slate-200'
+                }`}>
+                  <p className="text-xs font-semibold text-slate-700 mb-1">{competitiveResult.market_position}</p>
+                  <p className="text-sm text-emerald-700 font-medium">{competitiveResult.seller_wedge}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[10px] text-slate-400">Displacement risk:</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      competitiveResult.displacement_risk === 'high' ? 'bg-red-100 text-red-700' :
+                      competitiveResult.displacement_risk === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>{competitiveResult.displacement_risk}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {(competitiveResult.competitors ?? []).map((c, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                      <p className="font-semibold text-slate-900 text-sm mb-2">{c.name}</p>
+                      <p className="text-xs text-slate-500 mb-1">{c.positioning}</p>
+                      <p className="text-xs text-red-600 mb-2">Weakness: {c.weakness}</p>
+                      <p className="text-xs text-indigo-700 italic">BD angle: {c.bd_angle}</p>
+                    </div>
+                  ))}
+                </div>
+                {(competitiveResult.recommended_talking_points ?? []).length > 0 && (
+                  <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Competitive Talking Points</p>
+                    <ul className="space-y-1">
+                      {competitiveResult.recommended_talking_points.map((t, i) => (
+                        <li key={i} className="text-xs text-slate-700 flex gap-2">
+                          <span className="text-indigo-400 flex-shrink-0">▸</span>{t}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Drift Check */}
+      {pipeline?.status === 'complete' && (
+        <div>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Company Signal Monitor</p>
+            <button
+              onClick={async () => {
+                setDriftLoading(true);
+                try { setDriftResult(await runDriftCheck(id)); }
+                catch { /* silent — result stays null */ }
+                finally { setDriftLoading(false); }
+              }}
+              disabled={driftLoading}
+              className="text-sm border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+            >
+              {driftLoading && <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
+              {driftLoading ? 'Checking for changes…' : '🔄 Check for New Signals'}
+            </button>
+          </div>
+          {driftResult && (
+            <div className={`bg-white rounded-xl border shadow-sm p-5 animate-fade-in ${
+              driftResult.alert_level === 'high' ? 'border-red-200' :
+              driftResult.alert_level === 'medium' ? 'border-amber-200' :
+              driftResult.alert_level === 'low' ? 'border-blue-200' : 'border-slate-200'
+            }`}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                  driftResult.alert_level === 'high' ? 'bg-red-100 text-red-700' :
+                  driftResult.alert_level === 'medium' ? 'bg-amber-100 text-amber-700' :
+                  driftResult.alert_level === 'low' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                }`}>{driftResult.alert_level === 'none' ? 'No changes' : `${driftResult.alert_level} alert`}</span>
+                <span className="text-[10px] text-slate-400">checked {new Date(driftResult.checked_at).toLocaleString()}</span>
+              </div>
+              <p className="text-sm text-slate-700 mb-3">{driftResult.summary}</p>
+              {driftResult.changes.length > 0 && (
+                <div className="space-y-2">
+                  {driftResult.changes.map((c, i) => (
+                    <div key={i} className="bg-slate-50 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">{c.type}</span>
+                        <span className="text-xs font-semibold text-slate-800">{c.title}</span>
+                      </div>
+                      <p className="text-xs text-slate-600">{c.detail}</p>
+                      <p className="text-xs text-emerald-700 mt-1">BD impact: {c.impact_on_bd}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       {/* Prospects grid */}
       {prospects.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">
-            Identified Prospects ({prospects.length})
-          </p>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Identified Prospects ({prospects.length})
+            </p>
+            {pipeline?.status === 'complete' && (
+              <button
+                onClick={async () => {
+                  setBulkLoading(true);
+                  setBulkResult(null);
+                  try {
+                    const r = await bulkGenerate(id, { generate_poc: true, generate_email: true, tone: 'professional', word_limit: 150 });
+                    setBulkResult({ generated: r.generated, total: r.total });
+                    await fetchPipeline();
+                  } catch { /* silently surface via toast-less indicator */ }
+                  finally { setBulkLoading(false); }
+                }}
+                disabled={bulkLoading}
+                className="text-sm bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                {bulkLoading && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                {bulkLoading ? 'Generating for all…' : '⚡ Generate All POC + Emails'}
+              </button>
+            )}
+          </div>
+          {bulkResult && (
+            <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 text-sm text-emerald-800">
+              ✓ Generated for {bulkResult.generated} of {bulkResult.total} prospects — click any card to view.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {prospects.map(prospect => (
               <div key={prospect.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 hover:border-indigo-200 transition-colors">
@@ -821,9 +1146,26 @@ export default function PipelinePage() {
                   </div>
                   <ConfidenceBadge confidence={prospect.confidence} />
                 </div>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {prospect.seniority && prospect.seniority !== 'Unknown' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium">{prospect.seniority}</span>
+                  )}
+                  {prospect.role_category && prospect.role_category !== 'Other' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{prospect.role_category}</span>
+                  )}
+                  {prospect.location && prospect.location !== 'Unknown' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">📍 {prospect.location}</span>
+                  )}
+                  {prospect.prospect_status && prospect.prospect_status !== 'new' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium capitalize">{prospect.prospect_status.replace('_', ' ')}</span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-600 mb-2">{prospect.relevance}</p>
                 {prospect.contact_angle && (
                   <p className="text-xs text-indigo-600 italic mb-4">💡 {prospect.contact_angle}</p>
+                )}
+                {prospect.poc_plan && (
+                  <p className="text-[10px] text-emerald-600 font-medium mb-2">✓ POC plan ready</p>
                 )}
                 <Link
                   href={`/pipeline/${id}/prospect/${prospect.id}`}

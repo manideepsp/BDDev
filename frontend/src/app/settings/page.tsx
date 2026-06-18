@@ -13,10 +13,21 @@ const INDUSTRY_OPTIONS = [
 ];
 const ENGAGEMENT_OPTIONS = ['Fixed Price', 'T&M', 'Dedicated Team', 'Staff Augmentation'];
 
+const BRAND_VOICE_TONES = [
+  { value: 'professional', label: 'Professional', desc: 'Polished, executive-to-executive' },
+  { value: 'conversational', label: 'Conversational', desc: 'Warm, human, peer-to-peer' },
+  { value: 'bold', label: 'Bold', desc: 'Provocative, insight-led, earns attention' },
+  { value: 'thought-leader', label: 'Thought Leader', desc: 'Educational, opinionated, big-picture' },
+];
+
 const EMPTY: CompanyProfile = {
   company_name: '', company_type: '', team_size: '', headquarters: '',
   services: [], industries: [], technologies: '', case_studies: '', usps: '',
   engagement_models: [],
+  brand_voice_tone: 'professional',
+  brand_voice_rules: '',
+  brand_voice_example: '',
+  brand_voice_forbidden: '',
 };
 
 function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -158,6 +169,80 @@ export default function SettingsPage() {
             <textarea className={`${inputCls} resize-none`} rows={2} value={profile.usps}
               onChange={e => setProfile(p => ({ ...p, usps: e.target.value }))}
               placeholder="Dedicated teams not body-shopping · AI/ML in-house · first sprint in week 1" />
+          </div>
+        </div>
+
+        {/* Brand Voice */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">Brand Voice</p>
+            <p className="text-xs text-slate-400">Controls how LinkedIn posts and outreach emails sound. Injected into every generation prompt.</p>
+          </div>
+
+          {/* Default tone */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Default Tone</label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {BRAND_VOICE_TONES.map(t => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setProfile(p => ({ ...p, brand_voice_tone: t.value }))}
+                  className={`text-left px-3 py-2.5 rounded-lg border transition-all ${
+                    profile.brand_voice_tone === t.value
+                      ? 'border-indigo-400 bg-indigo-50 shadow-sm'
+                      : 'border-slate-200 hover:border-indigo-200'
+                  }`}
+                >
+                  <p className={`text-xs font-medium ${profile.brand_voice_tone === t.value ? 'text-indigo-800' : 'text-slate-700'}`}>{t.label}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{t.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Writing rules */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Writing Rules
+              <span className="ml-1.5 text-xs font-normal text-slate-400">Dos and don&apos;ts injected into every prompt</span>
+            </label>
+            <textarea
+              className={`${inputCls} resize-none`}
+              rows={3}
+              value={profile.brand_voice_rules ?? ''}
+              onChange={e => setProfile(p => ({ ...p, brand_voice_rules: e.target.value }))}
+              placeholder="e.g. Never use buzzwords like 'synergy', 'holistic', 'leverage'. Always lead with a specific number or outcome. Keep sentences short. Never use exclamation points."
+            />
+          </div>
+
+          {/* Forbidden words */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Forbidden Words / Phrases
+              <span className="ml-1.5 text-xs font-normal text-slate-400">Comma-separated</span>
+            </label>
+            <input
+              className={inputCls}
+              value={profile.brand_voice_forbidden ?? ''}
+              onChange={e => setProfile(p => ({ ...p, brand_voice_forbidden: e.target.value }))}
+              placeholder="synergy, solutions, touch base, circle back, best-in-class, cutting-edge, leverage"
+            />
+          </div>
+
+          {/* Example */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Example Writing
+              <span className="ml-1.5 text-xs font-normal text-slate-400">A post or email your team loved — the model will match this style</span>
+            </label>
+            <textarea
+              className={`${inputCls} resize-none`}
+              rows={5}
+              value={profile.brand_voice_example ?? ''}
+              onChange={e => setProfile(p => ({ ...p, brand_voice_example: e.target.value }))}
+              placeholder="Paste a LinkedIn post or cold email that represents your ideal voice. The AI will use it as a style reference."
+            />
           </div>
         </div>
 

@@ -133,6 +133,13 @@ class InsightsAgent:
             context_parts.append(f"KEYWORDS: {json.dumps(keywords)}")
         context = "\n\n".join(context_parts)[:6000]
 
+        # Warn downstream when context is very thin — prevents hallucination
+        data_quality = "rich" if len(context) > 1500 else ("sparse" if len(context) > 400 else "very sparse")
+        if data_quality != "rich":
+            context += f"\n\nDATA QUALITY WARNING: Context is {data_quality} ({len(context)} chars). " \
+                       "Score ICP conservatively. Use low confidence on all pain points. " \
+                       "State 'Unknown' for any field not supported by evidence."
+
         target_context = target_context or {}
         target_block = ""
         if target_context.get("notes"):
@@ -143,89 +150,109 @@ class InsightsAgent:
             target_block += f"\nTARGET DEAL SIZE BAND: {target_context['deal_size']}"
 
         today = datetime.now().strftime("%Y-%m-%d")
-        prompt = f"""You are a world-class BD strategist for an IT services / software vendor. Synthesize the data below into a structured, EVIDENCE-FIRST intelligence report. Every pain point MUST be anchored to concrete evidence from the gathered data — never invent facts. If evidence is weak, lower the confidence. Identify specific prospects (people to pitch to).
 
-TODAY'S DATE: {today} — use this to judge recency of information and events.
+        system = (
+            "You are a world-class B2B intelligence analyst and BD strategist. "
+            "You synthesize raw, imperfect scraped data into an evidence-first intelligence report. "
+            "Your cardinal rule: every pain point, every claim, every score must be traceable to "
+            "something in the provided data. If the data is thin, you say so explicitly through "
+            "lower confidence scores and hedged language — you never hallucinate specifics. "
+            "ICP scores must reflect the actual fit between the target company and the seller's "
+            "profile, not aspirational numbers. A score of 50 is honest; 95 is a red flag."
+        )
 
-COMPANY: {company_name}
-USER'S OFFERING (free text): {user_description}{target_block}
+        user = f"""Synthesize the gathered data below into a structured BD intelligence report.
+
+ANALYSIS DATE: {today} — judge recency of events against this date.
+TARGET COMPANY: {company_name}
+SELLER OFFERING: {user_description}{target_block}
 
 {_profile_block(company_profile)}
 
 GATHERED DATA:
 {context}
 
-Return ONLY this JSON:
+Return ONLY this JSON — no markdown, no commentary:
 {{
   "company_overview": {{
-    "description": "2-3 sentence summary",
-    "industry": "Primary industry",
-    "size": "Estimated headcount/ARR",
-    "founded": "Year or decade",
-    "headquarters": "City, Country"
+    "description": "2–3 sentences grounded in what the data actually shows",
+    "industry": "Primary industry vertical",
+    "size": "Headcount or ARR estimate — say 'Unknown' if not in data",
+    "founded": "Year or decade — say 'Unknown' if not in data",
+    "headquarters": "City, Country — say 'Unknown' if not in data"
   }},
-  "business_model": "How they make money",
+  "business_model": "How they make money — be specific, avoid 'they provide solutions'",
   "tech_stack": {{
-    "current": ["technologies/platforms they appear to use now"],
-    "hiring": ["technologies implied by hiring / job signals, or empty"],
-    "gaps": ["capabilities they appear to lack that the user could provide"]
+    "current": ["technologies/platforms they demonstrably use now"],
+    "hiring": ["technologies implied by job postings or hiring signals — empty if none found"],
+    "gaps": ["capabilities the data suggests they lack that the seller could address"]
   }},
   "pain_points": [
     {{
-      "title": "Short pain point name",
-      "severity": "high|medium|low",
-      "evidence": ["concrete observation taken from the gathered data (quote a signal)"],
-      "inference": "what this evidence implies about the company",
-      "opportunity": "how the user's services specifically address this",
-      "pitch_angle": "one-line angle to lead with",
-      "confidence": "high|medium|low"
+      "title": "Short, specific pain point name",
+      "severity": "high | medium | low",
+      "evidence": ["Direct quote or paraphrase from the gathered data that supports this pain"],
+      "inference": "What the evidence implies about underlying business pressure",
+      "opportunity": "How the seller's specific services address this — not generic",
+      "pitch_angle": "One line: how to lead with this pain in a cold email or call opener",
+      "confidence": "high | medium | low — based on evidence quality, not wishful thinking"
     }}
   ],
-  "bd_opportunities": ["specific opportunity 1", "specific opportunity 2"],
-  "recent_developments": ["recent event with timeframe"],
+  "bd_opportunities": [
+    "Specific, time-anchored opportunity (e.g. 'Expanding into APAC — needs localisation tooling')"
+  ],
+  "recent_developments": [
+    "Recent event with timeframe — only include if supported by gathered data"
+  ],
   "competitive_landscape": {{
-    "main_competitors": ["name1", "name2", "name3"],
-    "market_position": "leader/challenger/niche",
-    "differentiators": "what sets them apart"
+    "main_competitors": ["name1", "name2"],
+    "market_position": "leader | challenger | niche | unknown",
+    "differentiators": "What sets them apart — or 'unclear from available data'"
   }},
   "engagement_score": {{
-    "score": <integer 1-100>,
-    "reasoning": "why this score"
+    "score": "<integer 1-100 — weight: pain fit 40%, timing 30%, access 30%>",
+    "reasoning": "2–3 sentences explaining the score with reference to specific signals"
   }},
   "icp_score": {{
-    "overall": <integer 1-100>,
+    "overall": "<integer 1-100 — average of breakdown, not inflated>",
     "breakdown": {{
-      "industry_fit": <1-100>,
-      "tech_alignment": <1-100>,
-      "company_size": <1-100>,
-      "pain_service_fit": <1-100>,
-      "budget_probability": <1-100>,
-      "decision_readiness": <1-100>
+      "industry_fit": "<1-100>",
+      "tech_alignment": "<1-100>",
+      "company_size": "<1-100>",
+      "pain_service_fit": "<1-100>",
+      "budget_probability": "<1-100>",
+      "decision_readiness": "<1-100>"
     }},
-    "recommended_action": "PRIORITIZE / NURTURE / DEPRIORITIZE — one short clause why",
-    "suggested_deal_size": "e.g. $300K-$600K / year",
-    "best_entry_point": "the fastest-yes service or angle"
+    "recommended_action": "PRIORITIZE | NURTURE | DEPRIORITIZE — one clause of specific reasoning",
+    "suggested_deal_size": "e.g. '$100K–$300K / year' or 'Unknown'",
+    "best_entry_point": "The fastest-yes service angle or entry point for this specific company"
   }},
-  "recommended_approach": "2-3 sentence BD strategy",
-  "key_keywords": ["top 6 keywords representing this company context"],
+  "recommended_approach": "2–3 sentences of specific BD strategy — not generic advice",
+  "key_keywords": ["6 keywords that best represent this company's context for RAG retrieval"],
   "prospects": [
     {{
       "id": "p1",
-      "name": "Full Name or role description if name unknown",
-      "title": "Job Title",
-      "relevance": "why this person for BD",
-      "contact_angle": "specific angle to use when pitching",
-      "confidence": "high"
+      "name": "Full Name if found — otherwise describe the role ('Head of Engineering (name unknown)')",
+      "title": "Job title",
+      "relevance": "Why specifically this person for the seller's offering",
+      "contact_angle": "Specific, personalised angle to lead with — reference a real signal",
+      "confidence": "high | medium | low"
     }}
   ]
 }}
-Provide 3 pain points (each grounded in evidence) and 2-4 prospects. Score ICP factors honestly based on fit between the target and the user's profile. If no specific prospect names are found, infer likely personas based on the company type."""
+
+Provide exactly 3 pain points and 2–4 prospects. Score ICP factors against the seller's actual profile, not against an ideal customer in the abstract. If data is sparse on any dimension, score conservatively."""
 
         try:
             msg = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                max_tokens=3500,
-                messages=[{"role": "user", "content": prompt}],
+                max_tokens=4000,
+                temperature=0.2,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
             )
             intelligence = extract_json(msg.choices[0].message.content)
         except Exception as e:

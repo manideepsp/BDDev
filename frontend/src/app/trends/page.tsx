@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getMarketTrends, TrendsResponse, TrendsCluster } from '@/lib/api';
+import { getMarketTrends, listPipelines, TrendsResponse, TrendsCluster, Pipeline } from '@/lib/api';
 
 const SECTOR_ICONS: Record<string, string> = {
   fintech: '💳', finance: '💳', banking: '🏦',
@@ -27,7 +27,7 @@ function getSectorIcon(theme: string): string {
   return '📊';
 }
 
-function ClusterCard({ cluster, index }: { cluster: TrendsCluster; index: number }) {
+function ClusterCard({ cluster, index, pipelineMap }: { cluster: TrendsCluster; index: number; pipelineMap: Record<string, string> }) {
   const icon = getSectorIcon(cluster.theme);
   return (
     <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-slide-up anim-delay-${Math.min(index + 1, 4) as 1|2|3|4}`}>
@@ -39,11 +39,16 @@ function ClusterCard({ cluster, index }: { cluster: TrendsCluster; index: number
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-slate-900 text-base leading-snug">{cluster.theme}</h3>
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {cluster.companies.map(c => (
-              <span key={c} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">
-                {c}
-              </span>
-            ))}
+            {cluster.companies.map(c => {
+              const pid = pipelineMap[c.toLowerCase()];
+              return pid ? (
+                <Link key={c} href={`/pipeline/${pid}`} className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium hover:bg-indigo-100 transition-colors border border-indigo-100">
+                  {c} →
+                </Link>
+              ) : (
+                <span key={c} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">{c}</span>
+              );
+            })}
           </div>
         </div>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1 flex-shrink-0">
@@ -112,14 +117,123 @@ function LoadingSkeleton() {
   );
 }
 
+// ── Content Intelligence Brief ────────────────────────────────────────────────
+
+const FORMAT_MAP: Record<string, string> = {
+  trend_spotlight: 'Trend Spotlight',
+  pain_narrative: 'Pain Narrative',
+  contrarian: 'Contrarian Take',
+  how_we_help: 'Case / How We Help',
+  industry_take: 'Industry Take',
+};
+
+function inferPostFormat(cluster: TrendsCluster): string {
+  const t = (cluster.theme + ' ' + cluster.insight).toLowerCase();
+  if (/pain|challenge|struggle|problem|block/i.test(t)) return 'pain_narrative';
+  if (/growth|expansion|adopt|surge|trend|shift/i.test(t)) return 'trend_spotlight';
+  if (/opport|deliver|help|partner|solution/i.test(t)) return 'how_we_help';
+  if (/despite|however|contrary|but most|wrong/i.test(t)) return 'contrarian';
+  return 'industry_take';
+}
+
+function ContentBrief({ clusters }: { clusters: TrendsCluster[] }) {
+  const [copied, setCopied] = useState(false);
+
+  const brief = clusters.map((c, i) => {
+    const format = inferPostFormat(c);
+    // derive a 1-sentence content hook from cluster insight
+    const hook = c.insight.split('.')[0] + '.';
+    const audience = c.companies.length > 0
+      ? `Companies like ${c.companies.slice(0, 2).join(', ')}`
+      : 'Target accounts in this cluster';
+    return { theme: c.theme, format, hook, audience, opportunity: c.opportunity };
+  });
+
+  function copyBrief() {
+    const lines = [
+      `CONTENT INTELLIGENCE BRIEF — ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`,
+      `Generated from ${clusters.length} market clusters across your pipeline.`,
+      '',
+      ...brief.map((b, i) => [
+        `${i + 1}. ${b.theme.toUpperCase()} — ${FORMAT_MAP[b.format] ?? b.format}`,
+        `   Hook: ${b.hook}`,
+        `   Audience: ${b.audience}`,
+        `   BD link: ${b.opportunity}`,
+        '',
+      ].join('\n')),
+    ].join('\n');
+    navigator.clipboard.writeText(lines);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Editorial Brief</p>
+          <p className="text-xs text-slate-400 mt-0.5">Content angles derived from your market intelligence clusters</p>
+        </div>
+        <button
+          onClick={copyBrief}
+          className="text-xs border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
+        >
+          {copied ? '✓ Copied!' : '📋 Copy full brief'}
+        </button>
+      </div>
+      <div className="space-y-3">
+        {brief.map((b, i) => (
+          <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-start gap-4">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0 text-base">
+              {getSectorIcon(b.theme)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                <p className="text-sm font-semibold text-slate-900 truncate">{b.theme}</p>
+                <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full flex-shrink-0">
+                  {FORMAT_MAP[b.format] ?? b.format}
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mb-1.5 leading-relaxed">{b.hook}</p>
+              {b.opportunity && (
+                <p className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1">
+                  BD angle: {b.opportunity.slice(0, 120)}{b.opportunity.length > 120 ? '…' : ''}
+                </p>
+              )}
+              <p className="text-[10px] text-slate-400 mt-1.5">
+                Audience: {b.audience}
+              </p>
+            </div>
+            <Link
+              href="/linkedin"
+              className="text-[10px] font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 whitespace-nowrap"
+            >
+              Generate post →
+            </Link>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function TrendsPage() {
   const [data, setData] = useState<TrendsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pipelineMap, setPipelineMap] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<'intelligence' | 'editorial'>('intelligence');
 
   useEffect(() => {
-    getMarketTrends()
-      .then(setData)
+    Promise.all([getMarketTrends(), listPipelines()])
+      .then(([trends, pipelines]) => {
+        setData(trends);
+        const map: Record<string, string> = {};
+        for (const p of pipelines as Pipeline[]) {
+          if (p.status === 'complete') map[p.company_name.toLowerCase()] = p.id;
+        }
+        setPipelineMap(map);
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -176,17 +290,13 @@ export default function TrendsPage() {
                 <p className="text-slate-400 text-xs mb-8">
                   {data.total_companies_analyzed} of 3 companies needed
                 </p>
-                {/* Progress bar */}
                 <div className="w-full max-w-xs mx-auto bg-slate-100 rounded-full h-1.5 mb-8">
                   <div
                     className="bg-indigo-500 h-1.5 rounded-full transition-all"
                     style={{ width: `${Math.min(100, (data.total_companies_analyzed / 3) * 100)}%` }}
                   />
                 </div>
-                <Link
-                  href="/analyze"
-                  className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm shadow-indigo-900/20"
-                >
+                <Link href="/analyze" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm shadow-indigo-900/20">
                   Start Analysis →
                 </Link>
               </div>
@@ -210,37 +320,55 @@ export default function TrendsPage() {
                   </div>
                 )}
 
-                {/* Section label */}
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                    Trend Clusters — {data.clusters.length} identified
-                  </p>
-                  <Link
-                    href="/analyze"
-                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
-                  >
-                    Add company
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </Link>
-                </div>
-
-                {/* Cluster cards */}
-                <div className="space-y-4">
-                  {data.clusters.map((cluster, i) => (
-                    <ClusterCard key={i} cluster={cluster} index={i} />
+                {/* Tab switcher */}
+                <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+                  {(['intelligence', 'editorial'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                        activeTab === tab
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      {tab === 'intelligence' ? '📊 Market Clusters' : '✍️ Content Brief'}
+                    </button>
                   ))}
                 </div>
+
+                {/* Market intelligence tab */}
+                {activeTab === 'intelligence' && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        Trend Clusters — {data.clusters.length} identified
+                      </p>
+                      <Link href="/analyze" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
+                        Add company
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </Link>
+                    </div>
+                    <div className="space-y-4">
+                      {data.clusters.map((cluster, i) => (
+                        <ClusterCard key={i} cluster={cluster} index={i} pipelineMap={pipelineMap} />
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Content Brief tab */}
+                {activeTab === 'editorial' && (
+                  <ContentBrief clusters={data.clusters} />
+                )}
 
                 {/* Footer CTA */}
                 <div className="bg-slate-800 rounded-xl p-6 text-center">
                   <p className="text-slate-300 text-sm mb-1 font-medium">Keep building your intelligence base</p>
                   <p className="text-slate-500 text-xs mb-4">Every new pipeline refines the clusters and sharpens cross-portfolio opportunities.</p>
-                  <Link
-                    href="/analyze"
-                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
+                  <Link href="/analyze" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>

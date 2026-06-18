@@ -29,13 +29,30 @@ class WebsiteScraperAgent:
             return {"pages": [], "error": str(e)}
 
     def _find_url(self, company_name: str) -> str | None:
+        """Search for the company's official website, with basic domain-name validation."""
         try:
             from duckduckgo_search import DDGS
-            results = list(DDGS().text(f"{company_name} official website", max_results=3))
+            from urllib.parse import urlparse
+            # Normalize company name to a slug for domain matching
+            slug = company_name.lower().replace(" ", "").replace("-", "").replace(".", "")[:20]
+            results = list(DDGS().text(f'"{company_name}" official website OR homepage', max_results=5))
             for r in results:
-                url = r.get("href") or r.get("url","")
-                if url and "linkedin" not in url and "wikipedia" not in url:
-                    return url
+                url = r.get("href") or r.get("url", "")
+                if not url:
+                    continue
+                skip = {"linkedin", "wikipedia", "crunchbase", "glassdoor", "twitter",
+                        "facebook", "instagram", "youtube", "indeed", "g2.com", "capterra"}
+                if any(s in url for s in skip):
+                    continue
+                # Prefer URLs whose domain contains the company name slug
+                try:
+                    domain = urlparse(url).netloc.lower().replace("www.", "").replace("-", "").replace(".", "")
+                    if slug[:8] in domain or domain[:8] in slug:
+                        return url
+                except Exception:
+                    pass
+                # Fall back to first non-social result
+                return url
         except Exception:
             pass
         return None

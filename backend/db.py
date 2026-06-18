@@ -1,4 +1,4 @@
-import sqlite3, json, os
+import sqlite3, json, os, uuid
 from datetime import datetime
 
 DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "nexus.db"))
@@ -67,6 +67,46 @@ def init_db():
             note TEXT,
             created_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS competitive_analysis (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT NOT NULL,
+            result_json TEXT,
+            created_at TEXT,
+            FOREIGN KEY (pipeline_id) REFERENCES pipelines(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS drift_checks (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT NOT NULL,
+            alert_level TEXT,
+            summary TEXT,
+            changes_json TEXT,
+            new_signals_json TEXT,
+            checked_at TEXT,
+            FOREIGN KEY (pipeline_id) REFERENCES pipelines(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS email_refinements (
+            id TEXT PRIMARY KEY,
+            email_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT,
+            FOREIGN KEY (email_id) REFERENCES pipeline_emails(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS linkedin_posts (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            strategy TEXT,
+            trend_cluster TEXT,
+            strategy_note TEXT,
+            status TEXT DEFAULT 'draft',
+            pipeline_ids TEXT,
+            char_count INTEGER,
+            created_at TEXT
+        );
         """)
         _ensure_columns(conn)
 
@@ -81,18 +121,30 @@ _PIPELINE_EXTRA_COLUMNS = {
     "gathered_json": "TEXT",
     "human_input": "TEXT",
 }
+_PROSPECT_EXTRA_COLUMNS = {
+    "prospect_status": "TEXT",
+    "seniority": "TEXT",
+    "role_category": "TEXT",
+    "location": "TEXT",
+}
 _ALLOWED_COL_TYPES = {"TEXT", "INTEGER", "REAL"}
 
 def _ensure_columns(conn):
-    existing = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
+    existing_pipeline = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
     for col, coltype in _PIPELINE_EXTRA_COLUMNS.items():
-        if col in existing:
+        if col in existing_pipeline:
             continue
-        # Defensive validation: SQLite cannot bind DDL identifiers/types as
-        # parameters, so guard against anything that isn't a plain identifier.
         if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
             raise ValueError(f"Unsafe column definition: {col} {coltype}")
         conn.execute(f"ALTER TABLE pipelines ADD COLUMN {col} {coltype}")  # nosec B608
+
+    existing_prospect = {r[1] for r in conn.execute("PRAGMA table_info(pipeline_prospects)").fetchall()}
+    for col, coltype in _PROSPECT_EXTRA_COLUMNS.items():
+        if col in existing_prospect:
+            continue
+        if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
+            raise ValueError(f"Unsafe column definition: {col} {coltype}")
+        conn.execute(f"ALTER TABLE pipeline_prospects ADD COLUMN {col} {coltype}")  # nosec B608
 
 def create_pipeline(id, company_name, company_url, user_description, sender_name=None, sender_company=None,
                     linkedin_url=None, deal_size=None, priority=None, notes=None):
@@ -168,8 +220,17 @@ def save_prospects(pipeline_id, prospects):
     with get_conn() as conn:
         for p in prospects:
             conn.execute(
-                "INSERT OR REPLACE INTO pipeline_prospects (id,pipeline_id,name,title,relevance,contact_angle,confidence) VALUES (?,?,?,?,?,?,?)",
-                (p["id"], pipeline_id, p.get("name",""), p.get("title",""), p.get("relevance",""), p.get("contact_angle",""), p.get("confidence","medium"))
+                "INSERT OR REPLACE INTO pipeline_prospects "
+                "(id,pipeline_id,name,title,relevance,contact_angle,confidence,seniority,role_category,location,prospect_status) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    p["id"], pipeline_id,
+                    p.get("name", ""), p.get("title", ""),
+                    p.get("relevance", ""), p.get("contact_angle", ""),
+                    p.get("confidence", "medium"),
+                    p.get("seniority", ""), p.get("role_category", ""),
+                    p.get("location", ""), p.get("prospect_status", "new"),
+                )
             )
 
 def get_prospects(pipeline_id):
@@ -245,6 +306,226 @@ def get_feedback(pipeline_id):
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM feedback WHERE pipeline_id=? ORDER BY created_at DESC", (pipeline_id,)).fetchall()
         return [dict(r) for r in rows]
+
+# ── LinkedIn Posts CRUD ────────────────────────────────────────────────────────
+
+def save_linkedin_post(post: dict):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO linkedin_posts "
+            "(id, content, strategy, trend_cluster, strategy_note, status, pipeline_ids, char_count, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                post["id"],
+                post.get("content", ""),
+                post.get("strategy", ""),
+                post.get("trend_cluster", ""),
+                post.get("strategy_note", ""),
+                post.get("status", "draft"),
+                json.dumps(post.get("pipeline_ids", [])),
+                post.get("char_count", len(post.get("content", ""))),
+                post.get("created_at", datetime.now().isoformat()),
+            )
+        )
+
+
+def list_linkedin_posts():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM linkedin_posts ORDER BY created_at DESC").fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            try:
+                d["pipeline_ids"] = json.loads(d["pipeline_ids"]) if d.get("pipeline_ids") else []
+            except Exception:
+                d["pipeline_ids"] = []
+            result.append(d)
+        return result
+
+
+def update_linkedin_post_status(post_id: str, status: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE linkedin_posts SET status=? WHERE id=?", (status, post_id))
+
+
+def update_linkedin_post_content(post_id: str, content: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE linkedin_posts SET content=?, char_count=? WHERE id=?",
+            (content, len(content), post_id)
+        )
+
+
+def delete_linkedin_post(post_id: str):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM linkedin_posts WHERE id=?", (post_id,))
+
+
+def get_email_by_id(email_id: str):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM pipeline_emails WHERE id=?", (email_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("keywords_used"):
+            try:
+                d["keywords_used"] = json.loads(d["keywords_used"])
+            except Exception:
+                d["keywords_used"] = []
+        return d
+
+
+_ALLOWED_EMAIL_FIELDS = {"body", "follow_up_body", "subject", "follow_up_subject"}
+
+def update_email_field(email_id: str, field: str, value: str):
+    if field not in _ALLOWED_EMAIL_FIELDS:
+        raise ValueError(f"Field '{field}' is not allowed")
+    with get_conn() as conn:
+        conn.execute(f"UPDATE pipeline_emails SET {field}=? WHERE id=?", (value, email_id))
+
+
+# ── Competitive Analysis ──────────────────────────────────────────────────────
+
+def save_competitive_analysis(pipeline_id: str, result: dict) -> str:
+    aid = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO competitive_analysis (id, pipeline_id, result_json, created_at) VALUES (?, ?, ?, ?)",
+            (aid, pipeline_id, json.dumps(result), datetime.now().isoformat())
+        )
+    return aid
+
+
+def get_competitive_analysis(pipeline_id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT result_json FROM competitive_analysis WHERE pipeline_id=? ORDER BY created_at DESC LIMIT 1",
+            (pipeline_id,)
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
+
+
+# ── Drift Checks ──────────────────────────────────────────────────────────────
+
+def save_drift_check(pipeline_id: str, result: dict) -> str:
+    did = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO drift_checks (id, pipeline_id, alert_level, summary, changes_json, new_signals_json, checked_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (did, pipeline_id,
+             result.get("alert_level", "none"),
+             result.get("summary", ""),
+             json.dumps(result.get("changes", [])),
+             json.dumps(result.get("new_signals", [])),
+             result.get("checked_at", datetime.now().isoformat()))
+        )
+    return did
+
+
+def get_drift_checks(pipeline_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM drift_checks WHERE pipeline_id=? ORDER BY checked_at DESC",
+            (pipeline_id,)
+        ).fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            for field in ("changes_json", "new_signals_json"):
+                try:
+                    d[field.replace("_json", "")] = json.loads(d.pop(field) or "[]")
+                except Exception:
+                    d[field.replace("_json", "")] = []
+            result.append(d)
+        return result
+
+
+def get_latest_drift(pipeline_id: str) -> dict | None:
+    checks = get_drift_checks(pipeline_id)
+    return checks[0] if checks else None
+
+
+# ── Email Refinement History ───────────────────────────────────────────────────
+
+def save_email_refinement(email_id: str, role: str, content: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO email_refinements (id, email_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), email_id, role, content, datetime.now().isoformat())
+        )
+
+
+def get_email_refinements(email_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT role, content, created_at FROM email_refinements WHERE email_id=? ORDER BY created_at",
+            (email_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ── Prospect Status ────────────────────────────────────────────────────────────
+
+_ALLOWED_PROSPECT_STATUSES = {"new", "contacted", "in_conversation", "won", "lost", "deprioritized"}
+
+def update_prospect_status(prospect_id: str, status: str):
+    if status not in _ALLOWED_PROSPECT_STATUSES:
+        raise ValueError(f"Invalid status: {status}")
+    with get_conn() as conn:
+        conn.execute("UPDATE pipeline_prospects SET prospect_status=? WHERE id=?", (status, prospect_id))
+
+
+def get_feedback_preferences() -> dict:
+    """Aggregate feedback ratings into tone/style preferences for prompt injection.
+
+    Returns a dict with:
+      - preferred_tones: list of tones rated >= 4, sorted by avg rating desc
+      - high_rated_bodies: list of up to 3 email bodies rated 5 (for few-shot)
+      - avoided_tones: tones rated <= 2 consistently
+      - total_rated: total rated emails
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT f.rating, f.note, e.tone, e.body "
+            "FROM feedback f "
+            "LEFT JOIN pipeline_emails e ON f.output_id = e.id "
+            "WHERE f.output_type = 'email' AND f.rating IS NOT NULL "
+            "ORDER BY f.created_at DESC LIMIT 50"
+        ).fetchall()
+
+    if not rows:
+        return {"preferred_tones": [], "high_rated_bodies": [], "avoided_tones": [], "total_rated": 0}
+
+    tone_scores: dict[str, list[int]] = {}
+    high_bodies: list[str] = []
+    for row in rows:
+        rating = row[0]
+        tone = row[2]
+        body = row[3]
+        if tone:
+            tone_scores.setdefault(tone, []).append(rating or 0)
+        if rating == 5 and body and len(body) > 50:
+            high_bodies.append(body[:800])
+
+    preferred = sorted(
+        [(t, sum(s)/len(s)) for t, s in tone_scores.items() if sum(s)/len(s) >= 4.0],
+        key=lambda x: x[1], reverse=True
+    )
+    avoided = [t for t, s in tone_scores.items() if sum(s)/len(s) <= 2.0]
+
+    return {
+        "preferred_tones": [t for t, _ in preferred],
+        "high_rated_bodies": high_bodies[:3],
+        "avoided_tones": avoided,
+        "total_rated": len(rows),
+    }
+
 
 def get_stats():
     with get_conn() as conn:

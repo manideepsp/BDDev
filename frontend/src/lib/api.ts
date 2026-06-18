@@ -269,6 +269,11 @@ export interface CompanyProfile {
   case_studies: string;
   usps: string;
   engagement_models: string[];
+  // Brand Voice
+  brand_voice_tone?: string;       // preferred default tone: professional|conversational|bold|thought-leader
+  brand_voice_rules?: string;      // writing rules and dos/don'ts
+  brand_voice_example?: string;    // example post/email the team likes
+  brand_voice_forbidden?: string;  // words/phrases to never use
 }
 
 export interface FeedbackRequest {
@@ -289,6 +294,10 @@ export interface PipelineProspect {
   contact_angle: string;
   confidence: 'high' | 'medium' | 'low';
   poc_plan?: POCPlan;
+  seniority?: string;
+  role_category?: string;
+  location?: string;
+  prospect_status?: string;
 }
 
 export interface POCPlan {
@@ -451,10 +460,211 @@ export async function generatePitchAssets(
   });
 }
 
+export interface EmailABRequest {
+  prospect_id: string;
+  sender_name: string;
+  sender_company: string;
+  sender_offering: string;
+  tone_a?: string;
+  tone_b?: string;
+  trigger_event?: string;
+  linkedin_quote?: string;
+  word_limit?: number;
+}
+
+export interface EmailABResult {
+  variant_a: OutreachEmail;
+  variant_b: OutreachEmail;
+  tone_a: string;
+  tone_b: string;
+}
+
+export async function generateABEmails(pipelineId: string, data: EmailABRequest): Promise<EmailABResult> {
+  return request(`/api/v2/pipeline/${pipelineId}/email-ab`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export interface BulkGenerateRequest {
+  sender_name?: string;
+  sender_company?: string;
+  sender_offering?: string;
+  tone?: 'professional' | 'conversational' | 'bold';
+  word_limit?: number;
+  generate_poc?: boolean;
+  generate_email?: boolean;
+}
+
+export interface BulkGenerateResult {
+  generated: number;
+  total: number;
+  results: { prospect_id: string; name: string; poc: POCPlan | null; email: OutreachEmail | null; error: string | null }[];
+}
+
+export interface DriftChange {
+  type: string;
+  title: string;
+  detail: string;
+  impact_on_bd: string;
+  source_index: number;
+}
+
+export interface DriftResult {
+  changes: DriftChange[];
+  alert_level: 'high' | 'medium' | 'low' | 'none';
+  summary: string;
+  new_signals: { title: string; url: string; snippet: string }[];
+  checked_at: string;
+}
+
+export interface CompetitorProfile {
+  name: string;
+  positioning: string;
+  pricing_signal: string;
+  tech_approach: string;
+  weakness: string;
+  bd_angle: string;
+}
+
+export interface CompetitiveAnalysis {
+  competitors: CompetitorProfile[];
+  market_position: string;
+  seller_wedge: string;
+  displacement_risk: 'high' | 'medium' | 'low';
+  recommended_talking_points: string[];
+  company_name: string;
+}
+
+export interface ProfileSuggestions {
+  suggested_services: string[];
+  suggested_industries: string[];
+  suggested_technologies: string;
+  suggested_usps: string;
+  suggested_case_study: string;
+  reasoning: string;
+}
+
+export async function getProfileSuggestions(pipelineId: string): Promise<ProfileSuggestions> {
+  return request(`/api/v2/pipeline/${pipelineId}/profile-suggestions`);
+}
+
+export async function runCompetitiveAnalysis(pipelineId: string): Promise<CompetitiveAnalysis> {
+  return request(`/api/v2/pipeline/${pipelineId}/competitive-analysis`, { method: 'POST' });
+}
+
+export async function getCompetitiveAnalysis(pipelineId: string): Promise<CompetitiveAnalysis> {
+  return request(`/api/v2/pipeline/${pipelineId}/competitive-analysis`);
+}
+
+export async function runDriftCheck(pipelineId: string): Promise<DriftResult> {
+  return request(`/api/v2/pipeline/${pipelineId}/drift-check`, { method: 'POST' });
+}
+
+export async function getDriftHistory(pipelineId: string): Promise<DriftResult[]> {
+  return request(`/api/v2/pipeline/${pipelineId}/drift-checks`);
+}
+
+export async function bulkGenerate(pipelineId: string, data: BulkGenerateRequest): Promise<BulkGenerateResult> {
+  return request(`/api/v2/pipeline/${pipelineId}/bulk-generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function submitFeedback(data: FeedbackRequest): Promise<{ id: string; ok: boolean }> {
   return request('/api/feedback', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+}
+
+// ── LinkedIn Posts ─────────────────────────────────────────────────────────────
+
+export interface LinkedInPost {
+  id: string;
+  content: string;
+  strategy: 'trend_spotlight' | 'pain_narrative' | 'contrarian' | 'how_we_help' | 'industry_take' | 'case_signal';
+  trend_cluster: string;
+  strategy_note: string;
+  status: 'draft' | 'selected' | 'posted';
+  char_count: number;
+  created_at: string;
+  pipeline_ids?: string[];
+}
+
+export interface RefineRequest {
+  message: string;
+  current_content: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+}
+
+export interface RefineResponse {
+  content: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+}
+
+export async function generateLinkedInPosts(persona?: string): Promise<LinkedInPost[]> {
+  return request('/api/v2/linkedin/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ persona: persona ?? 'auto' }),
+  });
+}
+
+export async function listLinkedInPosts(): Promise<LinkedInPost[]> {
+  return request('/api/v2/linkedin/posts');
+}
+
+export async function updateLinkedInPostStatus(postId: string, status: string): Promise<void> {
+  await request(`/api/v2/linkedin/posts/${postId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function deleteLinkedInPost(postId: string): Promise<void> {
+  await request(`/api/v2/linkedin/posts/${postId}`, { method: 'DELETE' });
+}
+
+export async function refineLinkedInPost(postId: string, data: RefineRequest): Promise<RefineResponse> {
+  return request(`/api/v2/linkedin/posts/${postId}/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateProspectStatusV2(prospectId: string, status: string): Promise<void> {
+  await request(`/api/v2/prospects/${prospectId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function getEmailRefinements(emailId: string): Promise<{ role: string; content: string; created_at: string }[]> {
+  return request(`/api/v2/email/${emailId}/refinements`);
+}
+
+export async function refineEmail(emailId: string, data: RefineRequest): Promise<RefineResponse & { field: string }> {
+  return request(`/api/v2/email/${emailId}/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export interface CaseStudyPost {
+  format: 'story_arc' | 'data_lead' | 'quick_insight';
+  content: string;
+  char_count: number;
+}
+
+export async function generateCaseStudyPosts(pipelineId: string): Promise<{ posts: CaseStudyPost[]; company_name: string }> {
+  return request(`/api/v2/pipeline/${pipelineId}/case-study-posts`, { method: 'POST' });
 }
