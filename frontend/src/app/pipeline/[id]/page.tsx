@@ -2,8 +2,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPipeline, continuePipeline, bulkGenerate, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
-  EnrichedPerson, GatheredPost, GatheredJob } from '@/lib/api';
+import { getPipeline, continuePipeline, bulkGenerate, runDriftCheck, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
+  EnrichedPerson, GatheredPost, GatheredJob, DriftResult } from '@/lib/api';
 
 const PIPELINE_STAGES = ['gathering', 'people', 'keywords', 'researching', 'indexing', 'awaiting_input', 'insights', 'embedding'] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -637,6 +637,8 @@ export default function PipelinePage() {
   const [continued, setContinued] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ generated: number; total: number } | null>(null);
+  const [driftLoading, setDriftLoading] = useState(false);
+  const [driftResult, setDriftResult] = useState<DriftResult | null>(null);
 
   const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
 
@@ -802,6 +804,59 @@ export default function PipelinePage() {
                   );
                 })}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Drift Check */}
+      {pipeline?.status === 'complete' && (
+        <div>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Company Signal Monitor</p>
+            <button
+              onClick={async () => {
+                setDriftLoading(true);
+                try { setDriftResult(await runDriftCheck(id)); }
+                catch { /* silent — result stays null */ }
+                finally { setDriftLoading(false); }
+              }}
+              disabled={driftLoading}
+              className="text-sm border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+            >
+              {driftLoading && <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
+              {driftLoading ? 'Checking for changes…' : '🔄 Check for New Signals'}
+            </button>
+          </div>
+          {driftResult && (
+            <div className={`bg-white rounded-xl border shadow-sm p-5 animate-fade-in ${
+              driftResult.alert_level === 'high' ? 'border-red-200' :
+              driftResult.alert_level === 'medium' ? 'border-amber-200' :
+              driftResult.alert_level === 'low' ? 'border-blue-200' : 'border-slate-200'
+            }`}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                  driftResult.alert_level === 'high' ? 'bg-red-100 text-red-700' :
+                  driftResult.alert_level === 'medium' ? 'bg-amber-100 text-amber-700' :
+                  driftResult.alert_level === 'low' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                }`}>{driftResult.alert_level === 'none' ? 'No changes' : `${driftResult.alert_level} alert`}</span>
+                <span className="text-[10px] text-slate-400">checked {new Date(driftResult.checked_at).toLocaleString()}</span>
+              </div>
+              <p className="text-sm text-slate-700 mb-3">{driftResult.summary}</p>
+              {driftResult.changes.length > 0 && (
+                <div className="space-y-2">
+                  {driftResult.changes.map((c, i) => (
+                    <div key={i} className="bg-slate-50 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">{c.type}</span>
+                        <span className="text-xs font-semibold text-slate-800">{c.title}</span>
+                      </div>
+                      <p className="text-xs text-slate-600">{c.detail}</p>
+                      <p className="text-xs text-emerald-700 mt-1">BD impact: {c.impact_on_bd}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

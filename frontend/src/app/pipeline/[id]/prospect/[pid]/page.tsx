@@ -4,7 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   getPipeline, getPipelineProspects, generatePOCPlan, generateEmailV2, generatePitchAssets,
-  refineEmail, updateProspectStatusV2,
+  generateABEmails, refineEmail, updateProspectStatusV2,
   Pipeline, PipelineProspect, POCPlan, OutreachEmail, PitchAssets,
 } from '@/lib/api';
 import Feedback from '@/components/Feedback';
@@ -234,6 +234,7 @@ export default function ProspectPage() {
   const [loadingPitch, setLoadingPitch] = useState(false);
   const [loadingPOC, setLoadingPOC] = useState(false);
   const [loadingEmail, setLoadingEmail] = useState(false);
+  const [loadingAB, setLoadingAB] = useState(false);
   const [pitchError, setPitchError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [pocError, setPocError] = useState('');
@@ -669,20 +670,43 @@ export default function ProspectPage() {
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={!emailForm.sender_offering.trim() || loadingEmail}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-indigo-300 text-white font-medium py-3 rounded-lg transition-all shadow-sm shadow-indigo-900/20 flex items-center justify-center gap-2"
-              >
-                {loadingEmail ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                    Writing your email…
-                  </>
-                ) : (
-                  '✨ Generate Personalised Email'
-                )}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={!emailForm.sender_offering.trim() || loadingEmail || loadingAB}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-indigo-300 text-white font-medium py-3 rounded-lg transition-all shadow-sm shadow-indigo-900/20 flex items-center justify-center gap-2"
+                >
+                  {loadingEmail ? (
+                    <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Writing…</>
+                  ) : '✨ Generate Email'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!emailForm.sender_offering.trim() || loadingEmail || loadingAB || !pipelineId || !prospectId}
+                  onClick={async () => {
+                    if (!pipelineId || !prospectId) return;
+                    setLoadingAB(true);
+                    try {
+                      const ab = await generateABEmails(pipelineId, {
+                        prospect_id: prospectId as string,
+                        sender_name: emailForm.sender_name,
+                        sender_company: emailForm.sender_company,
+                        sender_offering: emailForm.sender_offering,
+                        tone_a: 'professional', tone_b: 'conversational',
+                        trigger_event: emailForm.trigger_event,
+                        word_limit: emailForm.word_limit,
+                      });
+                      setEmails(prev => [ab.variant_a, ab.variant_b, ...prev]);
+                    } catch (err) {
+                      setEmailError(err instanceof Error ? err.message : 'A/B generation failed');
+                    } finally { setLoadingAB(false); }
+                  }}
+                  className="px-4 py-3 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 font-medium rounded-lg transition-colors disabled:opacity-40 text-sm whitespace-nowrap"
+                  title="Generate 2 variants — Professional vs Conversational"
+                >
+                  {loadingAB ? <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /> : 'A/B Test'}
+                </button>
+              </div>
             </form>
           </div>
 

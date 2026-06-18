@@ -455,6 +455,33 @@ export async function generatePitchAssets(
   });
 }
 
+export interface EmailABRequest {
+  prospect_id: string;
+  sender_name: string;
+  sender_company: string;
+  sender_offering: string;
+  tone_a?: string;
+  tone_b?: string;
+  trigger_event?: string;
+  linkedin_quote?: string;
+  word_limit?: number;
+}
+
+export interface EmailABResult {
+  variant_a: OutreachEmail;
+  variant_b: OutreachEmail;
+  tone_a: string;
+  tone_b: string;
+}
+
+export async function generateABEmails(pipelineId: string, data: EmailABRequest): Promise<EmailABResult> {
+  return request(`/api/v2/pipeline/${pipelineId}/email-ab`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
 export interface BulkGenerateRequest {
   sender_name?: string;
   sender_company?: string;
@@ -469,6 +496,30 @@ export interface BulkGenerateResult {
   generated: number;
   total: number;
   results: { prospect_id: string; name: string; poc: POCPlan | null; email: OutreachEmail | null; error: string | null }[];
+}
+
+export interface DriftChange {
+  type: string;
+  title: string;
+  detail: string;
+  impact_on_bd: string;
+  source_index: number;
+}
+
+export interface DriftResult {
+  changes: DriftChange[];
+  alert_level: 'high' | 'medium' | 'low' | 'none';
+  summary: string;
+  new_signals: { title: string; url: string; snippet: string }[];
+  checked_at: string;
+}
+
+export async function runDriftCheck(pipelineId: string): Promise<DriftResult> {
+  return request(`/api/v2/pipeline/${pipelineId}/drift-check`, { method: 'POST' });
+}
+
+export async function getDriftHistory(pipelineId: string): Promise<DriftResult[]> {
+  return request(`/api/v2/pipeline/${pipelineId}/drift-checks`);
 }
 
 export async function bulkGenerate(pipelineId: string, data: BulkGenerateRequest): Promise<BulkGenerateResult> {

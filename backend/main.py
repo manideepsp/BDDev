@@ -154,6 +154,17 @@ class FeedbackRequest(BaseModel):
     rating: int
     note: Optional[str] = None
 
+class EmailABRequest(BaseModel):
+    prospect_id: str
+    sender_name: str
+    sender_company: str
+    sender_offering: str
+    tone_a: str = "professional"
+    tone_b: str = "conversational"
+    trigger_event: str = ""
+    linkedin_quote: str = ""
+    word_limit: int = 150
+
 class BulkGenerateRequest(BaseModel):
     sender_name: str = ""
     sender_company: str = ""
@@ -351,6 +362,42 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
 async def get_pipeline_emails(pipeline_id: str):
     from db import get_emails
     return get_emails(pipeline_id)
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/email-ab")
+async def generate_ab_emails(pipeline_id: str, body: EmailABRequest):
+    """Generate two email variants (tone A + tone B) in parallel for comparison."""
+    from db import get_pipeline as db_get_pipeline, get_prospects, save_email
+    from agents.email_gen import EmailGeneratorAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    intelligence = p.get("intelligence", {})
+    prospects = get_prospects(pipeline_id)
+    prospect = next((pr for pr in prospects if pr["id"] == body.prospect_id), None)
+    if not prospect:
+        raise HTTPException(status_code=404, detail="Prospect not found")
+    poc_plan = prospect.get("poc_plan") or {}
+
+    loop = asyncio.get_running_loop()
+    agent = EmailGeneratorAgent(client)
+
+    async def gen(tone: str):
+        return await loop.run_in_executor(None, lambda: agent.run(
+            prospect, poc_plan, intelligence, p["company_name"],
+            body.sender_name, body.sender_company, body.sender_offering, tone,
+            trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
+            word_limit=body.word_limit,
+        ))
+
+    try:
+        email_a, email_b = await asyncio.gather(gen(body.tone_a), gen(body.tone_b))
+        save_email(pipeline_id, body.prospect_id, email_a)
+        save_email(pipeline_id, body.prospect_id, email_b)
+        return {"variant_a": email_a, "variant_b": email_b, "tone_a": body.tone_a, "tone_b": body.tone_b}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"A/B email generation failed: {e}")
 
 
 @app.post("/api/v2/pipeline/{pipeline_id}/bulk-generate")
@@ -631,6 +678,41 @@ async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
         return {"content": new_content, "history": new_history, "field": "body"}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Email refine failed: {e}")
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/drift-check")
+async def run_drift_check(pipeline_id: str):
+    """Re-check a completed pipeline company for meaningful changes since last analysis."""
+    from db import get_pipeline as db_get_pipeline, save_drift_check, get_drift_checks
+    from agents.drift import DriftDetectorAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if p.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Pipeline not complete — nothing to diff against")
+
+    intelligence = p.get("intelligence", {})
+    last_analyzed = p.get("created_at", "")
+    company_url = p.get("company_url")
+
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: DriftDetectorAgent(client).run(
+                p["company_name"], intelligence, last_analyzed, company_url
+            )
+        )
+        save_drift_check(pipeline_id, result)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Drift check failed: {e}")
+
+
+@app.get("/api/v2/pipeline/{pipeline_id}/drift-checks")
+async def get_drift_history(pipeline_id: str):
+    from db import get_drift_checks
+    return get_drift_checks(pipeline_id)
 
 
 @app.get("/api/v2/email/{email_id}/refinements")

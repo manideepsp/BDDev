@@ -68,6 +68,17 @@ def init_db():
             created_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS drift_checks (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT NOT NULL,
+            alert_level TEXT,
+            summary TEXT,
+            changes_json TEXT,
+            new_signals_json TEXT,
+            checked_at TEXT,
+            FOREIGN KEY (pipeline_id) REFERENCES pipelines(id)
+        );
+
         CREATE TABLE IF NOT EXISTS email_refinements (
             id TEXT PRIMARY KEY,
             email_id TEXT NOT NULL,
@@ -363,6 +374,47 @@ def update_email_field(email_id: str, field: str, value: str):
         raise ValueError(f"Field '{field}' is not allowed")
     with get_conn() as conn:
         conn.execute(f"UPDATE pipeline_emails SET {field}=? WHERE id=?", (value, email_id))
+
+
+# ── Drift Checks ──────────────────────────────────────────────────────────────
+
+def save_drift_check(pipeline_id: str, result: dict) -> str:
+    did = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO drift_checks (id, pipeline_id, alert_level, summary, changes_json, new_signals_json, checked_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (did, pipeline_id,
+             result.get("alert_level", "none"),
+             result.get("summary", ""),
+             json.dumps(result.get("changes", [])),
+             json.dumps(result.get("new_signals", [])),
+             result.get("checked_at", datetime.now().isoformat()))
+        )
+    return did
+
+
+def get_drift_checks(pipeline_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM drift_checks WHERE pipeline_id=? ORDER BY checked_at DESC",
+            (pipeline_id,)
+        ).fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            for field in ("changes_json", "new_signals_json"):
+                try:
+                    d[field.replace("_json", "")] = json.loads(d.pop(field) or "[]")
+                except Exception:
+                    d[field.replace("_json", "")] = []
+            result.append(d)
+        return result
+
+
+def get_latest_drift(pipeline_id: str) -> dict | None:
+    checks = get_drift_checks(pipeline_id)
+    return checks[0] if checks else None
 
 
 # ── Email Refinement History ───────────────────────────────────────────────────
