@@ -154,6 +154,19 @@ class FeedbackRequest(BaseModel):
     rating: int
     note: Optional[str] = None
 
+class LinkedInGenerateRequest(BaseModel):
+    pass
+
+class LinkedInRefineRequest(BaseModel):
+    message: str
+    current_content: str
+    history: List[dict] = []
+
+class EmailRefineRequest(BaseModel):
+    message: str
+    current_content: str
+    history: List[dict] = []
+
 # --- startup ---
 
 from db import init_db
@@ -388,6 +401,172 @@ async def submit_feedback(body: FeedbackRequest):
 async def read_feedback(pipeline_id: str):
     from db import get_feedback
     return get_feedback(pipeline_id)
+
+# --- LinkedIn Posts ---
+
+@app.post("/api/v2/linkedin/generate")
+async def generate_linkedin_posts(body: LinkedInGenerateRequest):
+    from db import (get_company_profile, list_pipelines as db_list_pipelines,
+                    get_pipeline as db_get_pipeline, list_linkedin_posts, save_linkedin_post)
+    from agents.linkedin_post import LinkedInPostAgent
+    from pipeline import generate_market_trends
+
+    company_profile = get_company_profile()
+    all_posts = list_linkedin_posts()
+    past_posts = all_posts[:5]
+
+    pipelines = db_list_pipelines()
+    pipeline_summaries = []
+    for pl in pipelines:
+        if pl.get("status") != "complete":
+            continue
+        full = db_get_pipeline(pl["id"])
+        if not full:
+            continue
+        intel = full.get("intelligence") or {}
+        gathered = full.get("gathered") or {}
+
+        raw_pain = intel.get("pain_points", [])
+        pain_points = []
+        for pp in raw_pain[:3]:
+            if isinstance(pp, dict):
+                pain_points.append(pp.get("title") or pp.get("description") or str(pp))
+            else:
+                pain_points.append(str(pp))
+
+        raw_posts = (gathered.get("posts", {}).get("posts", [])
+                     if isinstance(gathered.get("posts"), dict) else gathered.get("posts", []))
+        gathered_posts = [
+            {"title": p.get("title", ""), "text": p.get("text", p.get("content", ""))[:200]}
+            for p in (raw_posts or [])[:5]
+        ]
+        industry = (intel.get("company_overview") or {}).get("industry", "")
+        pipeline_summaries.append({
+            "company_name": full.get("company_name", ""),
+            "industry": industry,
+            "pain_points": pain_points,
+            "key_keywords": intel.get("key_keywords", [])[:5],
+            "recent_developments": intel.get("recent_developments", [])[:2],
+            "gathered_posts": gathered_posts,
+        })
+
+    try:
+        trends_data = await generate_market_trends(groq_client, vector_agent)
+        trends_summary = trends_data.get("overall_summary", "")
+    except Exception:
+        trends_summary = ""
+
+    agent = LinkedInPostAgent(groq_client)
+    posts = agent.run(
+        company_profile=company_profile,
+        past_posts=past_posts,
+        pipeline_summaries=pipeline_summaries,
+        trends_summary=trends_summary,
+    )
+    for p in posts:
+        save_linkedin_post(p)
+    return posts
+
+
+@app.get("/api/v2/linkedin/posts")
+async def list_linkedin_posts_endpoint():
+    from db import list_linkedin_posts
+    return list_linkedin_posts()
+
+
+@app.patch("/api/v2/linkedin/posts/{post_id}/status")
+async def update_post_status(post_id: str, body: dict):
+    from db import update_linkedin_post_status
+    status = body.get("status", "draft")
+    update_linkedin_post_status(post_id, status)
+    return {"ok": True}
+
+
+@app.delete("/api/v2/linkedin/posts/{post_id}")
+async def delete_post(post_id: str):
+    from db import delete_linkedin_post
+    delete_linkedin_post(post_id)
+    return {"ok": True}
+
+
+@app.post("/api/v2/linkedin/posts/{post_id}/refine")
+async def refine_linkedin_post(post_id: str, body: LinkedInRefineRequest):
+    from db import list_linkedin_posts, update_linkedin_post_content
+
+    posts = list_linkedin_posts()
+    post = next((p for p in posts if p["id"] == post_id), None)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    history = body.history or []
+    messages = [
+        {"role": "system", "content": (
+            "You are a LinkedIn content editor. The user will ask you to refine a LinkedIn post. "
+            "Return ONLY the revised post text — no commentary, no JSON, no markdown fences. "
+            "Keep it under 1300 characters. Preserve the author's voice."
+        )},
+        {"role": "user", "content": f"Here is the current post:\n\n{body.current_content}"},
+    ]
+    for h in history:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": body.message})
+
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=600,
+            temperature=0.65,
+            messages=messages,
+        )
+        new_content = resp.choices[0].message.content.strip()
+        update_linkedin_post_content(post_id, new_content)
+        new_history = history + [
+            {"role": "user", "content": body.message},
+            {"role": "assistant", "content": new_content},
+        ]
+        return {"content": new_content, "history": new_history}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Refine failed: {e}")
+
+
+@app.post("/api/v2/email/{email_id}/refine")
+async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
+    from db import get_email_by_id, update_email_field
+
+    email = get_email_by_id(email_id)
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    history = body.history or []
+    messages = [
+        {"role": "system", "content": (
+            "You are a B2B email copywriter. Refine the email based on user instructions. "
+            "Return ONLY the revised email text — no JSON, no markdown, no commentary."
+        )},
+        {"role": "user", "content": f"Current email:\n\n{body.current_content}"},
+    ]
+    for h in history:
+        messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": body.message})
+
+    try:
+        from db import get_email_by_id as _get_email, update_email_field
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=800,
+            temperature=0.6,
+            messages=messages,
+        )
+        new_content = resp.choices[0].message.content.strip()
+        update_email_field(email_id, "body", new_content)
+        new_history = history + [
+            {"role": "user", "content": body.message},
+            {"role": "assistant", "content": new_content},
+        ]
+        return {"content": new_content, "history": new_history, "field": "body"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Email refine failed: {e}")
+
 
 # --- legacy v1 endpoints (kept for backward compatibility) ---
 

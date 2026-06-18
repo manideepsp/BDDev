@@ -1,12 +1,113 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   getPipeline, getPipelineProspects, generatePOCPlan, generateEmailV2, generatePitchAssets,
+  refineEmail,
   Pipeline, PipelineProspect, POCPlan, OutreachEmail, PitchAssets,
 } from '@/lib/api';
 import Feedback from '@/components/Feedback';
+
+// ── Email Refine Panel ────────────────────────────────────────────────────────
+
+interface EmailHistoryEntry {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+function RefinePanel({ emailId, initialContent, onApply }: {
+  emailId: string;
+  initialContent: string;
+  field: 'body' | 'follow_up_body';
+  onApply: (newContent: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [history, setHistory] = useState<EmailHistoryEntry[]>([]);
+  const [current, setCurrent] = useState(initialContent);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [history]);
+
+  async function handleSend() {
+    if (!message.trim() || loading) return;
+    const msg = message.trim();
+    setMessage('');
+    setLoading(true);
+    setError('');
+    try {
+      const res = await refineEmail(emailId, { message: msg, current_content: current, history });
+      setCurrent(res.content);
+      setHistory(res.history as EmailHistoryEntry[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Refine failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors mt-2 flex items-center gap-1.5"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+        Refine with AI
+      </button>
+    );
+  }
+
+  return (
+    <div className="border-l-2 border-indigo-200 ml-4 pl-4 mt-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Refine with AI</p>
+        <button onClick={() => setOpen(false)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">Close</button>
+      </div>
+      {current !== initialContent && (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500 mb-1">Refined version</p>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{current}</p>
+          <div className="flex items-center gap-3 mt-2">
+            <button onClick={() => onApply(current)} className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-md hover:bg-indigo-700 transition-colors font-medium">Apply changes</button>
+            <button onClick={() => { setCurrent(initialContent); setHistory([]); }} className="text-xs text-slate-400 hover:text-slate-600 underline transition-colors">Revert</button>
+          </div>
+        </div>
+      )}
+      {history.length > 0 && (
+        <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
+          {history.map((h, i) => (
+            <div key={i} className={`px-3 py-2 rounded-lg text-xs leading-relaxed ${h.role === 'user' ? 'bg-slate-100 text-slate-700 ml-6' : 'bg-white border border-slate-200 text-slate-600 mr-6'}`}>
+              <span className="font-medium text-[10px] uppercase tracking-wider text-slate-400 block mb-0.5">{h.role === 'user' ? 'You' : 'AI'}</span>
+              {h.content.length > 120 ? h.content.slice(0, 120) + '…' : h.content}
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      )}
+      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      <div className="flex gap-2">
+        <input
+          type="text" value={message} onChange={e => setMessage(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+          placeholder="e.g. Make it shorter, add more urgency..."
+          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400"
+          disabled={loading}
+        />
+        <button onClick={handleSend} disabled={!message.trim() || loading} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-lg transition-colors">
+          {loading ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : 'Send'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ── Utility components ────────────────────────────────────────────────────────
 
@@ -126,6 +227,7 @@ export default function ProspectPage() {
   const [prospect, setProspect] = useState<PipelineProspect | null>(null);
   const [pocPlan, setPocPlan] = useState<POCPlan | null>(null);
   const [emails, setEmails] = useState<OutreachEmail[]>([]);
+  const [emailBodies, setEmailBodies] = useState<Record<string, string>>({});
   const [selectedSubject, setSelectedSubject] = useState<number[]>([]);  // per email index
   const [pitchAssets, setPitchAssets] = useState<PitchAssets | null>(null);
   const [loadingPitch, setLoadingPitch] = useState(false);
@@ -578,8 +680,16 @@ export default function ProspectPage() {
                     ? (email.subject_lines[selectedSubject[emailIdx] ?? 0] ?? email.subject)
                     : email.subject
                 }
-                body={email.body}
+                body={emailBodies[email.id ?? ''] ?? email.body}
               />
+              {email.id && (
+                <RefinePanel
+                  emailId={email.id}
+                  initialContent={email.body}
+                  field="body"
+                  onApply={content => setEmailBodies(prev => ({ ...prev, [email.id!]: content }))}
+                />
+              )}
 
               {/* Follow-up */}
               <EmailBodyCard

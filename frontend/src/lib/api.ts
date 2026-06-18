@@ -458,3 +458,68 @@ export async function submitFeedback(data: FeedbackRequest): Promise<{ id: strin
     body: JSON.stringify(data),
   });
 }
+
+// ── LinkedIn Posts ─────────────────────────────────────────────────────────────
+
+export interface LinkedInPost {
+  id: string;
+  content: string;
+  strategy: 'trend_spotlight' | 'pain_narrative' | 'contrarian' | 'how_we_help' | 'industry_take' | 'case_signal';
+  trend_cluster: string;
+  strategy_note: string;
+  status: 'draft' | 'selected' | 'posted';
+  char_count: number;
+  created_at: string;
+  pipeline_ids?: string[];
+}
+
+export interface RefineRequest {
+  message: string;
+  current_content: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+}
+
+export interface RefineResponse {
+  content: string;
+  history: { role: 'user' | 'assistant'; content: string }[];
+}
+
+export async function generateLinkedInPosts(): Promise<LinkedInPost[]> {
+  return request('/api/v2/linkedin/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+}
+
+export async function listLinkedInPosts(): Promise<LinkedInPost[]> {
+  return request('/api/v2/linkedin/posts');
+}
+
+export async function updateLinkedInPostStatus(postId: string, status: string): Promise<void> {
+  await request(`/api/v2/linkedin/posts/${postId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function deleteLinkedInPost(postId: string): Promise<void> {
+  await request(`/api/v2/linkedin/posts/${postId}`, { method: 'DELETE' });
+}
+
+export async function refineLinkedInPost(postId: string, data: RefineRequest): Promise<RefineResponse> {
+  return request(`/api/v2/linkedin/posts/${postId}/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function refineEmail(emailId: string, data: RefineRequest): Promise<RefineResponse & { field: string }> {
+  return request(`/api/v2/email/${emailId}/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}

@@ -67,6 +67,18 @@ def init_db():
             note TEXT,
             created_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS linkedin_posts (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            strategy TEXT,
+            trend_cluster TEXT,
+            strategy_note TEXT,
+            status TEXT DEFAULT 'draft',
+            pipeline_ids TEXT,
+            char_count INTEGER,
+            created_at TEXT
+        );
         """)
         _ensure_columns(conn)
 
@@ -245,6 +257,83 @@ def get_feedback(pipeline_id):
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM feedback WHERE pipeline_id=? ORDER BY created_at DESC", (pipeline_id,)).fetchall()
         return [dict(r) for r in rows]
+
+# ── LinkedIn Posts CRUD ────────────────────────────────────────────────────────
+
+def save_linkedin_post(post: dict):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO linkedin_posts "
+            "(id, content, strategy, trend_cluster, strategy_note, status, pipeline_ids, char_count, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                post["id"],
+                post.get("content", ""),
+                post.get("strategy", ""),
+                post.get("trend_cluster", ""),
+                post.get("strategy_note", ""),
+                post.get("status", "draft"),
+                json.dumps(post.get("pipeline_ids", [])),
+                post.get("char_count", len(post.get("content", ""))),
+                post.get("created_at", datetime.now().isoformat()),
+            )
+        )
+
+
+def list_linkedin_posts():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM linkedin_posts ORDER BY created_at DESC").fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            try:
+                d["pipeline_ids"] = json.loads(d["pipeline_ids"]) if d.get("pipeline_ids") else []
+            except Exception:
+                d["pipeline_ids"] = []
+            result.append(d)
+        return result
+
+
+def update_linkedin_post_status(post_id: str, status: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE linkedin_posts SET status=? WHERE id=?", (status, post_id))
+
+
+def update_linkedin_post_content(post_id: str, content: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE linkedin_posts SET content=?, char_count=? WHERE id=?",
+            (content, len(content), post_id)
+        )
+
+
+def delete_linkedin_post(post_id: str):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM linkedin_posts WHERE id=?", (post_id,))
+
+
+def get_email_by_id(email_id: str):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM pipeline_emails WHERE id=?", (email_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("keywords_used"):
+            try:
+                d["keywords_used"] = json.loads(d["keywords_used"])
+            except Exception:
+                d["keywords_used"] = []
+        return d
+
+
+_ALLOWED_EMAIL_FIELDS = {"body", "follow_up_body", "subject", "follow_up_subject"}
+
+def update_email_field(email_id: str, field: str, value: str):
+    if field not in _ALLOWED_EMAIL_FIELDS:
+        raise ValueError(f"Field '{field}' is not allowed")
+    with get_conn() as conn:
+        conn.execute(f"UPDATE pipeline_emails SET {field}=? WHERE id=?", (value, email_id))
+
 
 def get_stats():
     with get_conn() as conn:
