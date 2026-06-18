@@ -658,3 +658,13 @@ export async function refineEmail(emailId: string, data: RefineRequest): Promise
     body: JSON.stringify(data),
   });
 }
+
+export interface CaseStudyPost {
+  format: 'story_arc' | 'data_lead' | 'quick_insight';
+  content: string;
+  char_count: number;
+}
+
+export async function generateCaseStudyPosts(pipelineId: string): Promise<{ posts: CaseStudyPost[]; company_name: string }> {
+  return request(`/api/v2/pipeline/${pipelineId}/case-study-posts`, { method: 'POST' });
+}

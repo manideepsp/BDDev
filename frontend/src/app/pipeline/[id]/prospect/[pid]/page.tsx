@@ -4,8 +4,8 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   getPipeline, getPipelineProspects, generatePOCPlan, generateEmailV2, generatePitchAssets,
-  generateABEmails, refineEmail, updateProspectStatusV2,
-  Pipeline, PipelineProspect, POCPlan, OutreachEmail, PitchAssets,
+  generateABEmails, refineEmail, updateProspectStatusV2, generateCaseStudyPosts,
+  Pipeline, PipelineProspect, POCPlan, OutreachEmail, PitchAssets, CaseStudyPost,
 } from '@/lib/api';
 import Feedback from '@/components/Feedback';
 
@@ -406,6 +406,8 @@ export default function ProspectPage() {
   const [loadingPOC, setLoadingPOC] = useState(false);
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [loadingAB, setLoadingAB] = useState(false);
+  const [loadingCaseStudy, setLoadingCaseStudy] = useState(false);
+  const [caseStudyPosts, setCaseStudyPosts] = useState<CaseStudyPost[]>([]);
   const [pitchError, setPitchError] = useState('');
   const [emailError, setEmailError] = useState('');
   const [pocError, setPocError] = useState('');
@@ -986,6 +988,57 @@ export default function ProspectPage() {
             </div>
           ))}
         </section>
+
+        {/* ── 2b. Case Study Post Generator (shown when prospect is Won) ─────── */}
+        {prospectStatus === 'won' && (
+          <section>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Case Study Content</p>
+                <p className="text-xs text-slate-400 mt-0.5">Turn this win into 3 LinkedIn post formats</p>
+              </div>
+              <button
+                onClick={async () => {
+                  setLoadingCaseStudy(true);
+                  try {
+                    const r = await generateCaseStudyPosts(pipelineId);
+                    setCaseStudyPosts(r.posts);
+                  } catch { /* silent */ }
+                  finally { setLoadingCaseStudy(false); }
+                }}
+                disabled={loadingCaseStudy}
+                className="text-sm bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                {loadingCaseStudy && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                {loadingCaseStudy ? 'Generating...' : caseStudyPosts.length ? '↻ Regenerate' : '🏆 Generate Case Study Posts'}
+              </button>
+            </div>
+            {caseStudyPosts.length > 0 && (
+              <div className="space-y-4 animate-slide-up">
+                {caseStudyPosts.map((post, i) => {
+                  const meta: Record<string, { label: string; color: string }> = {
+                    story_arc: { label: 'Story Arc', color: 'bg-indigo-100 text-indigo-700' },
+                    data_lead: { label: 'Data Lead', color: 'bg-emerald-100 text-emerald-700' },
+                    quick_insight: { label: 'Quick Insight', color: 'bg-slate-100 text-slate-600' },
+                  };
+                  const m = meta[post.format] ?? { label: post.format, color: 'bg-slate-100 text-slate-600' };
+                  return (
+                    <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${m.color}`}>{m.label}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] text-slate-400">{post.char_count} chars</span>
+                          <CopyBtn text={post.content} label="Copy post" />
+                        </div>
+                      </div>
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* ── 3. Pitch Assets (bundle) ─────────────────────────────────────────── */}
         <section className="mb-4">

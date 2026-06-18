@@ -346,7 +346,7 @@ async def generate_poc_plan(pipeline_id: str, body: POCRequest):
 
 @app.post("/api/v2/pipeline/{pipeline_id}/email")
 async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
-    from db import get_pipeline as db_get_pipeline, get_prospects, save_email, get_feedback_preferences
+    from db import get_pipeline as db_get_pipeline, get_prospects, save_email, get_feedback_preferences, get_company_profile
     from agents.email_gen import EmailGeneratorAgent
     p = db_get_pipeline(pipeline_id)
     if not p:
@@ -358,6 +358,7 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
         raise HTTPException(status_code=404, detail="Prospect not found")
     poc_plan = prospect.get("poc_plan") or {}
     feedback_prefs = get_feedback_preferences()
+    brand_voice = get_company_profile() or {}
     try:
         email = EmailGeneratorAgent(client).run(
             prospect, poc_plan, intelligence, p["company_name"],
@@ -365,6 +366,7 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
             trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
             word_limit=body.word_limit,
             feedback_prefs=feedback_prefs,
+            brand_voice=brand_voice,
         )
         save_email(pipeline_id, body.prospect_id, email)
         return email
@@ -831,6 +833,81 @@ async def get_drift_history(pipeline_id: str):
 async def get_email_refinements_endpoint(email_id: str):
     from db import get_email_refinements
     return get_email_refinements(email_id)
+
+
+@app.post("/api/v2/pipeline/{pipeline_id}/case-study-posts")
+async def generate_case_study_posts(pipeline_id: str):
+    """Generate 3 LinkedIn post formats from a won deal — story arc, data-lead, quick insight."""
+    from db import get_pipeline as db_get_pipeline, get_prospects, get_company_profile
+    from utils import extract_json
+
+    p = db_get_pipeline(pipeline_id)
+    if not p or p.get("status") != "complete":
+        raise HTTPException(status_code=404, detail="Pipeline not found or not complete")
+
+    intelligence = p.get("intelligence", {})
+    prospects = get_prospects(pipeline_id)
+    won_prospects = [pr for pr in prospects if pr.get("prospect_status") == "won"]
+    company_profile = get_company_profile() or {}
+
+    overview = intelligence.get("company_overview") or {}
+    pain_titles = [(pp.get("title") if isinstance(pp, dict) else str(pp))
+                   for pp in (intelligence.get("pain_points") or [])[:2]]
+    bv_forbidden = (company_profile.get("brand_voice_forbidden") or "").strip()
+    bv_rules = (company_profile.get("brand_voice_rules") or "").strip()
+    brand_block = ""
+    if bv_rules or bv_forbidden:
+        brand_block = f"\nBRAND VOICE: {bv_rules or ''} {'NEVER use: ' + bv_forbidden if bv_forbidden else ''}\n"
+
+    contact_line = ""
+    if won_prospects:
+        pr = won_prospects[0]
+        contact_line = f"Won through: {pr.get('name', '')} ({pr.get('title', '')})"
+
+    user = f"""You are a B2B LinkedIn content writer. Generate 3 distinct LinkedIn post formats celebrating a client win.
+{brand_block}
+DEAL DETAILS:
+  Client: {p['company_name']} ({overview.get('industry', '')})
+  Size: {overview.get('size', 'undisclosed')}
+  {contact_line}
+  Problems we solved: {'; '.join(pain_titles) or 'business transformation'}
+  Seller: {company_profile.get('company_name', 'our company')} — {', '.join(company_profile.get('services', []))[:120]}
+
+Generate exactly 3 posts:
+1. STORY ARC: 150–200 words. Problem → solution journey → outcome. Named or anonymised client.
+2. DATA LEAD: 80–120 words. Open with a specific metric/outcome number (estimated if unknown), then the 2-sentence story.
+3. QUICK INSIGHT: 60–80 words. One punchy lesson from this engagement that resonates with similar companies.
+
+Rules:
+- No exclamation marks. No buzzwords (synergy, leverage, solutions, cutting-edge).
+- Write in first person as the company voice.
+- Max 3 hashtags per post, at the very end.
+- The story arc may include a subtle CTA (DM for details).
+
+Return ONLY this JSON:
+{{
+  "posts": [
+    {{"format": "story_arc", "content": "...", "char_count": 0}},
+    {{"format": "data_lead", "content": "...", "char_count": 0}},
+    {{"format": "quick_insight", "content": "...", "char_count": 0}}
+  ]
+}}"""
+
+    try:
+        msg = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=1800,
+            temperature=0.65,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": user}],
+        )
+        data = extract_json(msg.choices[0].message.content)
+        posts = data.get("posts", [])
+        for post in posts:
+            post["char_count"] = len(post.get("content", ""))
+        return {"posts": posts, "company_name": p["company_name"]}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Case study post generation failed: {e}")
 
 
 class ProspectStatusRequest(BaseModel):
