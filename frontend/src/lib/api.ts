@@ -514,6 +514,32 @@ export interface DriftResult {
   checked_at: string;
 }
 
+export interface CompetitorProfile {
+  name: string;
+  positioning: string;
+  pricing_signal: string;
+  tech_approach: string;
+  weakness: string;
+  bd_angle: string;
+}
+
+export interface CompetitiveAnalysis {
+  competitors: CompetitorProfile[];
+  market_position: string;
+  seller_wedge: string;
+  displacement_risk: 'high' | 'medium' | 'low';
+  recommended_talking_points: string[];
+  company_name: string;
+}
+
+export async function runCompetitiveAnalysis(pipelineId: string): Promise<CompetitiveAnalysis> {
+  return request(`/api/v2/pipeline/${pipelineId}/competitive-analysis`, { method: 'POST' });
+}
+
+export async function getCompetitiveAnalysis(pipelineId: string): Promise<CompetitiveAnalysis> {
+  return request(`/api/v2/pipeline/${pipelineId}/competitive-analysis`);
+}
+
 export async function runDriftCheck(pipelineId: string): Promise<DriftResult> {
   return request(`/api/v2/pipeline/${pipelineId}/drift-check`, { method: 'POST' });
 }

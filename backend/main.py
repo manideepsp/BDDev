@@ -680,6 +680,43 @@ async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
         raise HTTPException(status_code=502, detail=f"Email refine failed: {e}")
 
 
+@app.post("/api/v2/pipeline/{pipeline_id}/competitive-analysis")
+async def run_competitive_analysis(pipeline_id: str):
+    """Run competitive intelligence analysis for a completed pipeline."""
+    from db import get_pipeline as db_get_pipeline, save_competitive_analysis, get_competitive_analysis
+    from agents.competitive import CompetitiveIntelligenceAgent
+
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if p.get("status") != "complete":
+        raise HTTPException(status_code=400, detail="Pipeline not complete")
+
+    intelligence = p.get("intelligence", {})
+    user_description = p.get("user_description", "")
+
+    try:
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: CompetitiveIntelligenceAgent(client).run(
+                p["company_name"], intelligence, user_description
+            )
+        )
+        save_competitive_analysis(pipeline_id, result)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Competitive analysis failed: {e}")
+
+
+@app.get("/api/v2/pipeline/{pipeline_id}/competitive-analysis")
+async def get_competitive_analysis_endpoint(pipeline_id: str):
+    from db import get_competitive_analysis
+    result = get_competitive_analysis(pipeline_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="No competitive analysis found")
+    return result
+
+
 @app.post("/api/v2/pipeline/{pipeline_id}/drift-check")
 async def run_drift_check(pipeline_id: str):
     """Re-check a completed pipeline company for meaningful changes since last analysis."""

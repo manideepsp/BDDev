@@ -68,6 +68,14 @@ def init_db():
             created_at TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS competitive_analysis (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT NOT NULL,
+            result_json TEXT,
+            created_at TEXT,
+            FOREIGN KEY (pipeline_id) REFERENCES pipelines(id)
+        );
+
         CREATE TABLE IF NOT EXISTS drift_checks (
             id TEXT PRIMARY KEY,
             pipeline_id TEXT NOT NULL,
@@ -374,6 +382,32 @@ def update_email_field(email_id: str, field: str, value: str):
         raise ValueError(f"Field '{field}' is not allowed")
     with get_conn() as conn:
         conn.execute(f"UPDATE pipeline_emails SET {field}=? WHERE id=?", (value, email_id))
+
+
+# ── Competitive Analysis ──────────────────────────────────────────────────────
+
+def save_competitive_analysis(pipeline_id: str, result: dict) -> str:
+    aid = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO competitive_analysis (id, pipeline_id, result_json, created_at) VALUES (?, ?, ?, ?)",
+            (aid, pipeline_id, json.dumps(result), datetime.now().isoformat())
+        )
+    return aid
+
+
+def get_competitive_analysis(pipeline_id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT result_json FROM competitive_analysis WHERE pipeline_id=? ORDER BY created_at DESC LIMIT 1",
+            (pipeline_id,)
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
 
 
 # ── Drift Checks ──────────────────────────────────────────────────────────────

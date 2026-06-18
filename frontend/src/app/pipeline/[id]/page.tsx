@@ -2,8 +2,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getPipeline, continuePipeline, bulkGenerate, runDriftCheck, Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
-  EnrichedPerson, GatheredPost, GatheredJob, DriftResult } from '@/lib/api';
+import { getPipeline, continuePipeline, bulkGenerate, runDriftCheck, runCompetitiveAnalysis,
+  Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
+  EnrichedPerson, GatheredPost, GatheredJob, DriftResult, CompetitiveAnalysis } from '@/lib/api';
 
 const PIPELINE_STAGES = ['gathering', 'people', 'keywords', 'researching', 'indexing', 'awaiting_input', 'insights', 'embedding'] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -639,6 +640,8 @@ export default function PipelinePage() {
   const [bulkResult, setBulkResult] = useState<{ generated: number; total: number } | null>(null);
   const [driftLoading, setDriftLoading] = useState(false);
   const [driftResult, setDriftResult] = useState<DriftResult | null>(null);
+  const [competitiveLoading, setCompetitiveLoading] = useState(false);
+  const [competitiveResult, setCompetitiveResult] = useState<CompetitiveAnalysis | null>(null);
 
   const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
 
@@ -806,6 +809,67 @@ export default function PipelinePage() {
               </div>
             </div>
           )}
+          {/* Competitive Intelligence */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Competitive Intelligence</p>
+              {pipeline?.status === 'complete' && (
+                <button
+                  onClick={async () => {
+                    setCompetitiveLoading(true);
+                    try { setCompetitiveResult(await runCompetitiveAnalysis(id)); }
+                    catch { /* silent */ }
+                    finally { setCompetitiveLoading(false); }
+                  }}
+                  disabled={competitiveLoading}
+                  className="text-sm border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 text-xs"
+                >
+                  {competitiveLoading && <div className="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
+                  {competitiveLoading ? 'Analysing…' : '⚔️ Run Competitive Analysis'}
+                </button>
+              )}
+            </div>
+            {competitiveResult && (
+              <div className="space-y-3 animate-fade-in">
+                <div className={`bg-white rounded-xl border shadow-sm p-4 ${
+                  competitiveResult.displacement_risk === 'high' ? 'border-red-200' :
+                  competitiveResult.displacement_risk === 'medium' ? 'border-amber-200' : 'border-slate-200'
+                }`}>
+                  <p className="text-xs font-semibold text-slate-700 mb-1">{competitiveResult.market_position}</p>
+                  <p className="text-sm text-emerald-700 font-medium">{competitiveResult.seller_wedge}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[10px] text-slate-400">Displacement risk:</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      competitiveResult.displacement_risk === 'high' ? 'bg-red-100 text-red-700' :
+                      competitiveResult.displacement_risk === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>{competitiveResult.displacement_risk}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {(competitiveResult.competitors ?? []).map((c, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                      <p className="font-semibold text-slate-900 text-sm mb-2">{c.name}</p>
+                      <p className="text-xs text-slate-500 mb-1">{c.positioning}</p>
+                      <p className="text-xs text-red-600 mb-2">Weakness: {c.weakness}</p>
+                      <p className="text-xs text-indigo-700 italic">BD angle: {c.bd_angle}</p>
+                    </div>
+                  ))}
+                </div>
+                {(competitiveResult.recommended_talking_points ?? []).length > 0 && (
+                  <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Competitive Talking Points</p>
+                    <ul className="space-y-1">
+                      {competitiveResult.recommended_talking_points.map((t, i) => (
+                        <li key={i} className="text-xs text-slate-700 flex gap-2">
+                          <span className="text-indigo-400 flex-shrink-0">▸</span>{t}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
