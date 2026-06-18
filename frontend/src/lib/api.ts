@@ -532,6 +532,19 @@ export interface CompetitiveAnalysis {
   company_name: string;
 }
 
+export interface ProfileSuggestions {
+  suggested_services: string[];
+  suggested_industries: string[];
+  suggested_technologies: string;
+  suggested_usps: string;
+  suggested_case_study: string;
+  reasoning: string;
+}
+
+export async function getProfileSuggestions(pipelineId: string): Promise<ProfileSuggestions> {
+  return request(`/api/v2/pipeline/${pipelineId}/profile-suggestions`);
+}
+
 export async function runCompetitiveAnalysis(pipelineId: string): Promise<CompetitiveAnalysis> {
   return request(`/api/v2/pipeline/${pipelineId}/competitive-analysis`, { method: 'POST' });
 }

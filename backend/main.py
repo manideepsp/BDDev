@@ -680,6 +680,63 @@ async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
         raise HTTPException(status_code=502, detail=f"Email refine failed: {e}")
 
 
+@app.get("/api/v2/pipeline/{pipeline_id}/profile-suggestions")
+async def suggest_profile_updates(pipeline_id: str):
+    """Infer company profile field suggestions from completed pipeline intelligence."""
+    from db import get_pipeline as db_get_pipeline, get_company_profile
+    p = db_get_pipeline(pipeline_id)
+    if not p or p.get("status") != "complete":
+        raise HTTPException(status_code=404, detail="Pipeline not found or not complete")
+
+    intelligence = p.get("intelligence", {})
+    existing_profile = get_company_profile() or {}
+    bd_opps = intelligence.get("bd_opportunities", [])[:3]
+    pain_titles = [
+        (pp.get("title") if isinstance(pp, dict) else str(pp))
+        for pp in (intelligence.get("pain_points") or [])[:3]
+    ]
+    tech_stack = intelligence.get("tech_stack", {})
+    tech_gaps = tech_stack.get("gaps", []) if isinstance(tech_stack, dict) else []
+
+    user = f"""Based on a completed BD intelligence report for {p['company_name']}, suggest improvements
+to the seller's company profile that would strengthen future analyses.
+
+WHAT THE SELLER CURRENTLY SAYS ABOUT THEMSELVES:
+  Services: {', '.join(existing_profile.get('services', []) or ['(not set)'])}
+  Industries: {', '.join(existing_profile.get('industries', []) or ['(not set)'])}
+  Technologies: {existing_profile.get('technologies', '(not set)')}
+  USPs: {existing_profile.get('usps', '(not set)')}
+
+WHAT RESONATED IN THIS ANALYSIS:
+  BD opportunities identified: {'; '.join(bd_opps)}
+  Pain points matched: {'; '.join(pain_titles)}
+  Tech gaps the seller could fill: {'; '.join(tech_gaps)}
+
+TASK: Suggest specific, additive improvements to the seller's profile based on what mattered in this analysis.
+Return ONLY this JSON:
+{{
+  "suggested_services": ["Service 1 to add or refine"],
+  "suggested_industries": ["Industry tag to add"],
+  "suggested_technologies": "Technologies or platforms to mention",
+  "suggested_usps": "USP angle that would have been relevant here",
+  "suggested_case_study": "Type of case study that would have been persuasive",
+  "reasoning": "One sentence: why these suggestions are grounded in this specific analysis"
+}}"""
+
+    try:
+        msg = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=600,
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": user}],
+        )
+        from utils import extract_json
+        return extract_json(msg.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Profile suggestion failed: {e}")
+
+
 @app.post("/api/v2/pipeline/{pipeline_id}/competitive-analysis")
 async def run_competitive_analysis(pipeline_id: str):
     """Run competitive intelligence analysis for a completed pipeline."""

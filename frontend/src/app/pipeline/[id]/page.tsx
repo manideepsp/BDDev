@@ -3,8 +3,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getPipeline, continuePipeline, bulkGenerate, runDriftCheck, runCompetitiveAnalysis,
+  getProfileSuggestions,
   Pipeline, PipelineProspect, PainPoint, ICPScore, TechStack,
-  EnrichedPerson, GatheredPost, GatheredJob, DriftResult, CompetitiveAnalysis } from '@/lib/api';
+  EnrichedPerson, GatheredPost, GatheredJob, DriftResult, CompetitiveAnalysis, ProfileSuggestions } from '@/lib/api';
 
 const PIPELINE_STAGES = ['gathering', 'people', 'keywords', 'researching', 'indexing', 'awaiting_input', 'insights', 'embedding'] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -642,6 +643,7 @@ export default function PipelinePage() {
   const [driftResult, setDriftResult] = useState<DriftResult | null>(null);
   const [competitiveLoading, setCompetitiveLoading] = useState(false);
   const [competitiveResult, setCompetitiveResult] = useState<CompetitiveAnalysis | null>(null);
+  const [profileSuggestions, setProfileSuggestions] = useState<ProfileSuggestions | null>(null);
 
   const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
 
@@ -649,10 +651,16 @@ export default function PipelinePage() {
     try {
       const p = await getPipeline(id);
       setPipeline(p);
-      if (PAUSED(p.status)) setLoading(false);
+      if (PAUSED(p.status)) {
+        setLoading(false);
+        if (p.status === 'complete' && !profileSuggestions) {
+          getProfileSuggestions(id).then(setProfileSuggestions).catch(() => null);
+        }
+      }
     } catch {
       router.push('/');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, router]);
 
   useEffect(() => {
@@ -783,6 +791,39 @@ export default function PipelinePage() {
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500 mb-2">AI Recommended Approach</p>
               <p className="text-sm text-indigo-800 leading-relaxed">{intel.recommended_approach}</p>
+            </div>
+          )}
+
+          {/* Profile learnings */}
+          {profileSuggestions && (
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-5 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <span className="text-xl flex-shrink-0">💡</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-1">Learnings for your company profile</p>
+                  <p className="text-xs text-amber-800 mb-3">{profileSuggestions.reasoning}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    {profileSuggestions.suggested_services.length > 0 && (
+                      <div><span className="font-medium text-amber-900">Services to mention: </span>
+                        <span className="text-amber-800">{profileSuggestions.suggested_services.join(', ')}</span>
+                      </div>
+                    )}
+                    {profileSuggestions.suggested_industries.length > 0 && (
+                      <div><span className="font-medium text-amber-900">Industry tags: </span>
+                        <span className="text-amber-800">{profileSuggestions.suggested_industries.join(', ')}</span>
+                      </div>
+                    )}
+                    {profileSuggestions.suggested_usps && (
+                      <div className="md:col-span-2"><span className="font-medium text-amber-900">USP angle: </span>
+                        <span className="text-amber-800">{profileSuggestions.suggested_usps}</span>
+                      </div>
+                    )}
+                  </div>
+                  <Link href="/settings" className="mt-3 inline-block text-xs text-amber-700 hover:text-amber-900 font-medium underline transition-colors">
+                    Update your profile →
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
 
