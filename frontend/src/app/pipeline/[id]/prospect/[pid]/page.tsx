@@ -203,6 +203,177 @@ function EmailBodyCard({ title, badge, subject, body }: {
   );
 }
 
+// ── Discovery Call Guide ──────────────────────────────────────────────────────
+
+function DiscoveryCallGuide({ prospect, pocPlan, companyName }: {
+  prospect: PipelineProspect;
+  pocPlan: POCPlan;
+  companyName: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const firstName = prospect.name?.split(' ')[0] ?? '[First Name]';
+  const hookLine = prospect.contact_angle
+    ? prospect.contact_angle.split('—')[0].trim()
+    : `some interesting signals at ${companyName}`;
+
+  // Reframe talking points as discovery questions
+  const discoveryQs = pocPlan.talking_points.map(tp => {
+    const t = tp.trim().replace(/\.$/, '');
+    if (/\?$/.test(t)) return t;
+    if (/^(how|what|when|why|where|which|who)/i.test(t)) return t + '?';
+    return `How are you currently handling ${t.toLowerCase()}?`;
+  });
+
+  // Build objection handler: pair each risk with a bridging response
+  const objHandlers = pocPlan.risks.map(risk => {
+    const r = risk.trim().replace(/\.$/, '');
+    return {
+      objection: r,
+      response: `That's a fair concern. The way we typically address it is through ${pocPlan.value_proposition.split('.')[0].toLowerCase()}.`,
+    };
+  });
+
+  const qualQs = [
+    `Are you still the right person leading [relevant initiative] at ${companyName}?`,
+    `Is this a priority for the next quarter, or is something else taking the spotlight right now?`,
+    `Who else is typically involved when you evaluate something like this?`,
+  ];
+
+  const opener = `"Hi ${firstName}, this is [Your Name] from [Company]. I noticed ${hookLine}. I have a quick 15-min ask — is now a good time?"`;
+
+  const nextStep = `"Based on what you shared, I'd like to propose a [${pocPlan.timeline}] scoped engagement — ${pocPlan.objective}. Can we put 30 minutes in the calendar this week?"`;
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors border border-indigo-200 hover:bg-indigo-50 px-4 py-2.5 rounded-lg"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+        </svg>
+        View Discovery Call Guide
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Discovery Call Guide — {prospect.name}</p>
+        <button onClick={() => setOpen(false)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">Collapse</button>
+      </div>
+
+      {/* Step 1: Opener */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-2.5 bg-indigo-600">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-200">Step 1 · Opener</span>
+          <span className="ml-2 text-[10px] text-indigo-300">~30 seconds</span>
+        </div>
+        <div className="p-4">
+          <p className="text-sm text-slate-700 italic leading-relaxed">{opener}</p>
+        </div>
+      </div>
+
+      {/* Step 2: Qualification */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-2.5 bg-slate-700">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Step 2 · Quick Qualification</span>
+          <span className="ml-2 text-[10px] text-slate-400">~2 minutes</span>
+        </div>
+        <div className="p-4">
+          <ul className="space-y-2">
+            {qualQs.map((q, i) => (
+              <li key={i} className="text-sm text-slate-700 flex gap-2.5">
+                <span className="text-slate-400 flex-shrink-0 font-mono text-xs mt-0.5">Q{i + 1}</span>
+                <span className="italic">"{q}"</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      {/* Step 3: Discovery */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-2.5 bg-emerald-600">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-100">Step 3 · Discovery</span>
+          <span className="ml-2 text-[10px] text-emerald-200">~10–15 minutes</span>
+        </div>
+        <div className="p-4">
+          <ul className="space-y-2.5">
+            {discoveryQs.map((q, i) => (
+              <li key={i} className="flex gap-2.5">
+                <span className="text-emerald-500 flex-shrink-0 font-mono text-xs mt-0.5">D{i + 1}</span>
+                <p className="text-sm text-slate-700 italic">"{q}"</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 bg-emerald-50 border border-emerald-100 rounded-lg p-3">
+            <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wider mb-1">Value hook to weave in</p>
+            <p className="text-xs text-emerald-800">{pocPlan.value_proposition}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Step 4: Objection Handling */}
+      {objHandlers.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 bg-amber-500">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-100">Step 4 · Objection Handling</span>
+          </div>
+          <div className="p-4 space-y-3">
+            {objHandlers.map((o, i) => (
+              <div key={i} className="border border-slate-100 rounded-lg overflow-hidden">
+                <div className="bg-red-50 px-3 py-1.5">
+                  <span className="text-xs text-red-700 font-medium">Likely objection: </span>
+                  <span className="text-xs text-red-800 italic">{o.objection}</span>
+                </div>
+                <div className="px-3 py-1.5">
+                  <span className="text-xs text-slate-500 font-medium">Response: </span>
+                  <span className="text-xs text-slate-700 italic">"{o.response}"</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Step 5: Next Step Close */}
+      <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Step 5 · Next Step Close</span>
+          <span className="ml-2 text-[10px] text-indigo-400">always end with a specific ask</span>
+        </div>
+        <div className="p-4">
+          <p className="text-sm text-slate-700 italic leading-relaxed">{nextStep}</p>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <CopyBtn
+          text={[
+            `DISCOVERY CALL GUIDE — ${prospect.name} at ${companyName}`,
+            '',
+            `OPENER: ${opener}`,
+            '',
+            `QUALIFICATION:\n${qualQs.map((q, i) => `Q${i+1}: "${q}"`).join('\n')}`,
+            '',
+            `DISCOVERY:\n${discoveryQs.map((q, i) => `D${i+1}: "${q}"`).join('\n')}`,
+            '',
+            `VALUE HOOK: ${pocPlan.value_proposition}`,
+            '',
+            `OBJECTIONS:\n${objHandlers.map(o => `- "${o.objection}"\n  Response: "${o.response}"`).join('\n')}`,
+            '',
+            `CLOSE: ${nextStep}`,
+          ].join('\n')}
+          label="📋 Copy full script"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 type Tone = 'professional' | 'conversational' | 'bold';
@@ -248,6 +419,7 @@ export default function ProspectPage() {
     linkedin_quote: '',
     word_limit: 150,
   });
+  const [triggerSource, setTriggerSource] = useState<'pain_point' | 'news' | 'opportunity' | ''>('');
 
   function setField(key: keyof EmailForm, value: string | number) {
     setEmailForm(f => ({ ...f, [key]: value }));
@@ -265,14 +437,26 @@ export default function ProspectPage() {
       setProspectStatus(found.prospect_status ?? 'new');
       if (found.poc_plan) setPocPlan(found.poc_plan);
 
-      // Pre-fill form from pipeline data
+      // Pre-fill form from pipeline data.
+      // Smart trigger selection: pick the highest-quality signal in priority order:
+      // 1. A high-confidence pitch_angle from a high-severity pain point (most specific)
+      // 2. First recent_development (time-anchored news beat)
+      // 3. First bd_opportunity (time-anchored signal)
+      // 4. Medium-severity pain pitch_angle (fallback)
+      const pains = p.intelligence?.pain_points ?? [];
+      const highPain = pains.find(pp => pp.severity === 'high' && pp.pitch_angle && pp.confidence !== 'low');
+      const medPain = pains.find(pp => pp.pitch_angle);
       const recentDev = p.intelligence?.recent_developments?.[0] ?? '';
+      const bdOpp = p.intelligence?.bd_opportunities?.[0] ?? '';
+      const trigger = (highPain?.pitch_angle) || recentDev || bdOpp || (medPain?.pitch_angle) || '';
+      const src = highPain?.pitch_angle ? 'pain_point' : recentDev ? 'news' : bdOpp ? 'opportunity' : medPain?.pitch_angle ? 'pain_point' : '';
+      setTriggerSource(src as typeof triggerSource);
       setEmailForm(f => ({
         ...f,
         sender_name: p.sender_name ?? f.sender_name,
         sender_company: p.sender_company ?? f.sender_company,
         sender_offering: p.user_description ?? f.sender_offering,
-        trigger_event: recentDev,
+        trigger_event: trigger,
       }));
     }).catch(() => router.push('/'));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -517,6 +701,18 @@ export default function ProspectPage() {
           )}
         </section>
 
+        {/* ── 1b. Discovery Call Guide ─────────────────────────────────────────── */}
+        {pocPlan && (
+          <section>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Phone Script</p>
+            <DiscoveryCallGuide
+              prospect={prospect}
+              pocPlan={pocPlan}
+              companyName={pipeline.company_name}
+            />
+          </section>
+        )}
+
         {/* ── 2. Email Generator ───────────────────────────────────────────────── */}
         <section>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Personalised Cold Email</p>
@@ -576,7 +772,18 @@ export default function ProspectPage() {
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   Trigger Event / Opening Hook
-                  <span className="ml-1.5 text-[10px] font-normal text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">pre-filled from research</span>
+                  {triggerSource === 'pain_point' && (
+                    <span className="ml-1.5 text-[10px] font-normal text-red-600 bg-red-50 px-1.5 py-0.5 rounded">from top pain point</span>
+                  )}
+                  {triggerSource === 'news' && (
+                    <span className="ml-1.5 text-[10px] font-normal text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">from recent news</span>
+                  )}
+                  {triggerSource === 'opportunity' && (
+                    <span className="ml-1.5 text-[10px] font-normal text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">from BD opportunity</span>
+                  )}
+                  {!triggerSource && (
+                    <span className="ml-1.5 text-[10px] font-normal text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">pre-filled from research</span>
+                  )}
                 </label>
                 <textarea
                   value={emailForm.trigger_event}

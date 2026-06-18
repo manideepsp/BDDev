@@ -83,6 +83,9 @@ const SEV_STYLES: Record<string, string> = {
 };
 
 function PainPointCard({ pain }: { pain: PainPoint }) {
+  const [expanded, setExpanded] = useState(false);
+  const evidenceList = pain.evidence ?? [];
+  const visibleEvidence = expanded ? evidenceList : evidenceList.slice(0, 1);
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -96,19 +99,45 @@ function PainPointCard({ pain }: { pain: PainPoint }) {
           </span>
         </div>
       </div>
-      {(pain.evidence ?? []).length > 0 && (
-        <div className="mb-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Evidence</p>
-          <ul className="space-y-1">
-            {pain.evidence.map((e, i) => (
-              <li key={i} className="text-xs text-slate-600 flex gap-2">
-                <span className="text-slate-300 flex-shrink-0">“</span>{e}
-              </li>
+
+      {/* Evidence chain — collapsible */}
+      {evidenceList.length > 0 && (
+        <div className="mb-3 border border-slate-100 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Evidence chain ({evidenceList.length})
+            </span>
+            <svg className={`w-3.5 h-3.5 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div className="px-3 py-2 space-y-2">
+            {visibleEvidence.map((e, i) => (
+              <div key={i} className="flex gap-2">
+                <span className="text-slate-300 flex-shrink-0 text-sm leading-tight mt-0.5">"</span>
+                <p className="text-xs text-slate-600 leading-relaxed">{e}</p>
+              </div>
             ))}
-          </ul>
+            {expanded && pain.inference && (
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">→ Inference</p>
+                <p className="text-xs text-slate-600 italic">{pain.inference}</p>
+              </div>
+            )}
+            {!expanded && evidenceList.length > 1 && (
+              <button onClick={() => setExpanded(true)} className="text-[10px] text-indigo-500 hover:text-indigo-700 font-medium transition-colors">
+                +{evidenceList.length - 1} more signal{evidenceList.length - 1 > 1 ? 's' : ''} + inference →
+              </button>
+            )}
+          </div>
         </div>
       )}
-      {pain.inference && (
+
+      {!expanded && pain.inference && evidenceList.length === 0 && (
         <div className="mb-2">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">Inference</p>
           <p className="text-xs text-slate-600">{pain.inference}</p>
@@ -143,6 +172,15 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+const ICP_FACTOR_RECS: Record<string, { low: string; mid: string }> = {
+  'Industry Fit':        { low: 'Industry is a stretch — lead with a cross-vertical case study to build credibility.', mid: 'Moderate fit — reference a comparable vertical win early in the pitch.' },
+  'Tech Alignment':      { low: 'Tech stack diverges — start with a discovery call to uncover integration requirements.', mid: 'Partial alignment — offer a lightweight tech audit as the opening move.' },
+  'Company Size':        { low: 'Unusual size band — propose a scoped pilot at reduced investment to lower entry risk.', mid: 'Size is borderline — frame around ROI per headcount to justify deal size.' },
+  'Pain–Service Fit':    { low: 'Pain match is weak — reframe the offering around their stated priorities from research.', mid: 'Moderate pain fit — identify the #1 pain and anchor the pitch solely on it.' },
+  'Budget Probability':  { low: 'Budget signals are absent — start with a cost-saving or ROI framing; propose a $20–40K scoped audit.', mid: 'Budget uncertain — tie proposal to an existing initiative already in flight.' },
+  'Decision Readiness':  { low: 'Decision maker is unclear — invest in multi-threading to map the buying committee.', mid: 'Early in buying cycle — focus on education and a low-commitment next step.' },
+};
+
 function ICPCard({ icp }: { icp: ICPScore }) {
   const b = icp.breakdown ?? ({} as ICPScore['breakdown']);
   const rows: [string, number][] = [
@@ -150,6 +188,16 @@ function ICPCard({ icp }: { icp: ICPScore }) {
     ['Company Size', b.company_size], ['Pain–Service Fit', b.pain_service_fit],
     ['Budget Probability', b.budget_probability], ['Decision Readiness', b.decision_readiness],
   ];
+  // Collect tactical flags for weak factors
+  const tactics = rows
+    .filter(([, v]) => (v || 0) < 65)
+    .map(([label, value]) => ({
+      label,
+      value,
+      rec: value < 45 ? ICP_FACTOR_RECS[label]?.low : ICP_FACTOR_RECS[label]?.mid,
+    }))
+    .filter(t => t.rec);
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
@@ -159,6 +207,23 @@ function ICPCard({ icp }: { icp: ICPScore }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-2.5 mb-4">
         {rows.map(([label, value]) => <ScoreBar key={label} label={label} value={value} />)}
       </div>
+      {/* Tactical recommendations for weak sub-scores */}
+      {tactics.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600">Tactical flags — low sub-scores</p>
+          {tactics.map(t => (
+            <div key={t.label} className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              <span className={`mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${
+                t.value < 45 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+              }`}>{t.value}%</span>
+              <div>
+                <p className="text-[10px] font-semibold text-amber-800">{t.label}</p>
+                <p className="text-xs text-amber-700 mt-0.5">{t.rec}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-3 border-t border-slate-100">
         {icp.recommended_action && (
           <div className="bg-indigo-50 rounded-lg p-2.5">
