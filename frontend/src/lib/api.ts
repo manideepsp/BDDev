@@ -607,11 +607,11 @@ export interface RefineResponse {
   history: { role: 'user' | 'assistant'; content: string }[];
 }
 
-export async function generateLinkedInPosts(): Promise<LinkedInPost[]> {
+export async function generateLinkedInPosts(persona?: string): Promise<LinkedInPost[]> {
   return request('/api/v2/linkedin/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ persona: persona ?? 'auto' }),
   });
 }
 

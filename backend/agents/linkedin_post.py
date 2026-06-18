@@ -127,6 +127,35 @@ def _build_past_strategy_summary(past_posts: list[dict]) -> str:
     return "\n".join(lines)
 
 
+_PERSONA_BLOCKS: dict[str, str] = {
+    "founder": (
+        "PERSONA: Write as a founder. Voice is candid, visionary, and first-person. "
+        "Share the bigger 'why' behind market patterns. Comfortable saying 'I believe' or 'We decided'. "
+        "Occasionally vulnerable — admits what was learned the hard way. No corporate speak."
+    ),
+    "technical": (
+        "PERSONA: Write as a technical expert. Voice is precise, evidence-based, and credible. "
+        "Explain *how* things work at a conceptual level. Use specific terminology (but define it). "
+        "Sceptical of hype — always grounds claims in mechanics or data."
+    ),
+    "business_leader": (
+        "PERSONA: Write as a business leader / executive. Voice is ROI-focused and decisive. "
+        "Frames everything in terms of business outcomes: revenue, margin, speed, risk. "
+        "Concise sentences. No jargon that doesn't tie to a number or a decision."
+    ),
+    "bd_lead": (
+        "PERSONA: Write as a BD lead. Voice is client-centric and opportunity-aware. "
+        "Talks about buyer patterns, procurement dynamics, and relationship-first selling. "
+        "Spots opportunity in signals others dismiss. Warm but commercially sharp."
+    ),
+}
+
+
+def _build_persona_block(persona: str) -> str:
+    block = _PERSONA_BLOCKS.get(persona, "")
+    return block + "\n" if block else ""
+
+
 class LinkedInPostAgent:
     def __init__(self, groq_client):
         self.client = groq_client
@@ -137,6 +166,7 @@ class LinkedInPostAgent:
         past_posts: list[dict],
         pipeline_summaries: list[dict],
         trends_summary: str,
+        persona: str = "auto",
     ) -> list[dict]:
         """Generate a batch of 5 LinkedIn posts using all available intelligence."""
         n = 5
@@ -147,10 +177,11 @@ class LinkedInPostAgent:
 
         n_companies = len(pipeline_summaries)
         brand_voice_block = _build_brand_voice_block(company_profile)
+        persona_block = _build_persona_block(persona)
 
         prompt = f"""You are a LinkedIn content strategist for a B2B company. Generate {n} distinct LinkedIn posts.
 
-COMPANY PROFILE:
+{persona_block}COMPANY PROFILE:
 {company_profile_summary}
 
 {brand_voice_block + chr(10) if brand_voice_block else ""}MARKET INTELLIGENCE (distilled from {n_companies} researched companies):

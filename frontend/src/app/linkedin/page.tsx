@@ -352,6 +352,16 @@ function EmptyState({ onGenerate, generating }: { onGenerate: () => void; genera
   );
 }
 
+// ── Persona metadata ──────────────────────────────────────────────────────────
+
+const PERSONAS: { value: string; label: string; desc: string; icon: string }[] = [
+  { value: 'auto',           label: 'Auto',          desc: 'Balanced, inferred from profile',     icon: '🤖' },
+  { value: 'founder',        label: 'Founder Voice',  desc: 'Visionary, candid, big-picture',      icon: '🚀' },
+  { value: 'technical',      label: 'Technical Expert', desc: 'Precise, credible, how-things-work', icon: '🛠️' },
+  { value: 'business_leader', label: 'Business Leader', desc: 'ROI-focused, executive-level',        icon: '📈' },
+  { value: 'bd_lead',        label: 'BD Lead',        desc: 'Client-centric, opportunity-aware',   icon: '🤝' },
+];
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function LinkedInPage() {
@@ -359,6 +369,7 @@ export default function LinkedInPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [selectedPersona, setSelectedPersona] = useState('auto');
 
   // Refine state
   const [activeRefineId, setActiveRefineId] = useState<string | null>(null);
@@ -372,11 +383,11 @@ export default function LinkedInPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function handleGenerate() {
+  async function handleGenerate(persona?: string) {
     setGenerating(true);
     setError('');
     try {
-      const newPosts = await generateLinkedInPosts();
+      const newPosts = await generateLinkedInPosts(persona ?? selectedPersona);
       setPosts(prev => [...newPosts, ...prev]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate posts');
@@ -448,7 +459,7 @@ export default function LinkedInPage() {
               </p>
             </div>
             <button
-              onClick={handleGenerate}
+              onClick={() => handleGenerate()}
               disabled={generating}
               className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-indigo-300 text-white font-medium px-4 py-2.5 rounded-lg transition-all shadow-sm shadow-indigo-900/20 flex items-center gap-2 text-sm"
             >
@@ -461,6 +472,35 @@ export default function LinkedInPage() {
                 'Generate fresh posts'
               )}
             </button>
+          </div>
+
+          {/* Persona selector */}
+          <div className="mt-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              Writing persona
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {PERSONAS.map(p => (
+                <button
+                  key={p.value}
+                  onClick={() => setSelectedPersona(p.value)}
+                  title={p.desc}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+                    selectedPersona === p.value
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
+                  }`}
+                >
+                  <span>{p.icon}</span>
+                  <span>{p.label}</span>
+                </button>
+              ))}
+            </div>
+            {selectedPersona !== 'auto' && (
+              <p className="text-[11px] text-slate-400 mt-1.5">
+                {PERSONAS.find(p => p.value === selectedPersona)?.desc}
+              </p>
+            )}
           </div>
 
           {/* Context chips */}
@@ -507,7 +547,7 @@ export default function LinkedInPage() {
             <span className="text-sm">Loading posts...</span>
           </div>
         ) : posts.length === 0 ? (
-          <EmptyState onGenerate={handleGenerate} generating={generating} />
+          <EmptyState onGenerate={() => handleGenerate(selectedPersona)} generating={generating} />
         ) : (
           <div className="space-y-4">
             {posts.map(post => (

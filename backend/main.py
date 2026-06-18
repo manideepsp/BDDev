@@ -175,7 +175,7 @@ class BulkGenerateRequest(BaseModel):
     generate_email: bool = True
 
 class LinkedInGenerateRequest(BaseModel):
-    pass
+    persona: str = "auto"
 
 class LinkedInRefineRequest(BaseModel):
     message: str
@@ -592,6 +592,7 @@ async def generate_linkedin_posts(body: LinkedInGenerateRequest):
         past_posts=past_posts,
         pipeline_summaries=pipeline_summaries,
         trends_summary=trends_summary,
+        persona=body.persona,
     )
     for p in posts:
         save_linkedin_post(p)
