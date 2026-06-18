@@ -9,3 +9,4 @@ backend/nexus.db
 backend/__pycache__/
 backend/agents/__pycache__/
 .qdrant/
+.claude/
