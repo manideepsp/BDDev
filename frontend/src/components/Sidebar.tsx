@@ -158,7 +158,7 @@ export default function Sidebar() {
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-medium text-white/80 truncate">Manideep</div>
             <div className="text-[11px] truncate" style={{ color: 'hsl(var(--sidebar-foreground) / 0.35)' }}>
-              pipaltree.ai
+              ks.business
             </div>
           </div>
           <Settings className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0" />
