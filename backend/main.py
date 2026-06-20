@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -9,14 +9,14 @@ import logging
 from dotenv import load_dotenv
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Nexus BD API", version="2.0.0")
+app = FastAPI(title="KS Business API", description="Knowledge Systems — BD Intelligence Platform", version="2.0.0")
 
 _default_allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _raw_allowed_origins = os.getenv("ALLOWED_ORIGINS")
@@ -124,9 +124,11 @@ class EmailRequest(BaseModel):
     sender_company: str
     sender_offering: str
     tone: str = "professional"
-    trigger_event: str = ""      # editable recent signal — funding, launch, etc.
-    linkedin_quote: str = ""     # specific quote from prospect's LinkedIn / interview
-    word_limit: int = 150        # max words for the email body
+    message_type: str = "cold_email"   # cold_email|follow_up_email|linkedin_message|linkedin_connection|call_script
+    trigger_event: str = ""            # editable opening hook / recent signal
+    linkedin_quote: str = ""           # prospect's LinkedIn post or interview quote
+    pain_focus: str = ""               # pain point title to anchor on (optional)
+    word_limit: int = 150
 
 class PitchRequest(BaseModel):
     prospect_id: str
@@ -154,6 +156,21 @@ class FeedbackRequest(BaseModel):
     rating: int
     note: Optional[str] = None
 
+class DealOutcomeRequest(BaseModel):
+    outcome: str  # "won" | "lost" | "dead"
+    actual_deal_size: Optional[str] = None
+    loss_reason: Optional[str] = None
+    notes: Optional[str] = None
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 class EmailABRequest(BaseModel):
     prospect_id: str
     sender_name: str
@@ -177,6 +194,14 @@ class BulkGenerateRequest(BaseModel):
 class LinkedInGenerateRequest(BaseModel):
     persona: str = "auto"
 
+class EmailTrackingUpdate(BaseModel):
+    sent_at: Optional[str] = None
+    replied_at: Optional[str] = None
+    email_notes: Optional[str] = None
+
+class ContactStatusUpdate(BaseModel):
+    status: str
+
 class LinkedInRefineRequest(BaseModel):
     message: str
     current_content: str
@@ -191,6 +216,10 @@ class EmailRefineRequest(BaseModel):
 
 from db import init_db
 from agents.vector_store import VectorStoreAgent
+from auth import (
+    hash_password, verify_password, create_access_token,
+    get_current_user, COOKIE_NAME, ACCESS_TOKEN_EXPIRE_DAYS
+)
 
 init_db()
 vector_agent = VectorStoreAgent()
@@ -200,6 +229,52 @@ vector_agent = VectorStoreAgent()
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+# --- auth routes ---
+
+@app.post("/api/auth/register")
+async def register(body: RegisterRequest, response: Response):
+    from db import get_user_by_email, create_user
+    if get_user_by_email(body.email):
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    user_id = str(uuid.uuid4())
+    hashed = hash_password(body.password)
+    create_user(user_id, body.email, body.full_name, hashed)
+    token = create_access_token({"sub": user_id, "email": body.email})
+    response.set_cookie(
+        key=COOKIE_NAME, value=token, httponly=True,
+        max_age=ACCESS_TOKEN_EXPIRE_DAYS * 86400, samesite="lax", secure=False,
+    )
+    return {"id": user_id, "email": body.email, "full_name": body.full_name}
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest, response: Response):
+    from db import get_user_by_email, update_user_last_login
+    user = get_user_by_email(body.email)
+    if not user or not verify_password(body.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    update_user_last_login(user["id"])
+    token = create_access_token({"sub": user["id"], "email": user["email"]})
+    response.set_cookie(
+        key=COOKIE_NAME, value=token, httponly=True,
+        max_age=ACCESS_TOKEN_EXPIRE_DAYS * 86400, samesite="lax", secure=False,
+    )
+    return {"id": user["id"], "email": user["email"], "full_name": user["full_name"]}
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie(key=COOKIE_NAME)
+    return {"ok": True}
+
+@app.get("/api/auth/me")
+async def me(current_user: dict = Depends(get_current_user)):
+    from db import get_user_by_id
+    user = get_user_by_id(current_user["sub"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"id": user["id"], "email": user["email"], "full_name": user["full_name"]}
 
 # --- stats ---
 
@@ -363,7 +438,10 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
         email = EmailGeneratorAgent(client).run(
             prospect, poc_plan, intelligence, p["company_name"],
             body.sender_name, body.sender_company, body.sender_offering, body.tone,
-            trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
+            message_type=body.message_type,
+            trigger_event=body.trigger_event,
+            linkedin_quote=body.linkedin_quote,
+            pain_focus=getattr(body, 'pain_focus', ''),
             word_limit=body.word_limit,
             feedback_prefs=feedback_prefs,
             brand_voice=brand_voice,
@@ -532,6 +610,33 @@ async def read_feedback(pipeline_id: str):
     from db import get_feedback
     return get_feedback(pipeline_id)
 
+# --- deal outcomes & ICP calibration ---
+
+@app.post("/api/v2/pipeline/{pipeline_id}/outcome")
+async def record_deal_outcome(pipeline_id: str, body: DealOutcomeRequest, current_user: dict = Depends(get_current_user)):
+    from db import get_pipeline as db_get_pipeline, save_deal_outcome
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if body.outcome not in ("won", "lost", "dead"):
+        raise HTTPException(status_code=422, detail="outcome must be 'won', 'lost', or 'dead'")
+    icp_score = None
+    if p.get("intelligence"):
+        icp_score = (p["intelligence"].get("icp_score") or {}).get("overall")
+    oid = str(uuid.uuid4())
+    save_deal_outcome(oid, pipeline_id, body.outcome, body.actual_deal_size,
+                      body.loss_reason, body.notes, icp_score)
+    logger.info(f"Deal outcome recorded for {pipeline_id}: {body.outcome}")
+    return {"id": oid, "ok": True}
+
+@app.get("/api/v2/icp-calibration")
+async def get_icp_calibration(current_user: dict = Depends(get_current_user)):
+    from db import get_icp_calibration_stats
+    stats = get_icp_calibration_stats()
+    total_deals = sum(s["total"] for s in stats)
+    return {"bands": stats, "total_deals": total_deals,
+            "note": "Win rates become reliable after ~20 recorded outcomes per band."}
+
 # --- LinkedIn Posts ---
 
 @app.post("/api/v2/linkedin/generate")
@@ -658,6 +763,490 @@ async def refine_linkedin_post(post_id: str, body: LinkedInRefineRequest):
         return {"content": new_content, "history": new_history}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Refine failed: {e}")
+
+
+# --- LinkedIn Intelligence Hub ---
+
+class LinkedInTargetRequest(BaseModel):
+    company_name: str = Field(..., min_length=1, max_length=120)
+    linkedin_url: str = Field(default="", max_length=300)
+    website_url: str = Field(default="", max_length=300)
+
+class LinkedInIdeaDraftRefineRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=2000)
+    current_content: str = Field(..., max_length=5000)
+    history: List[dict] = []
+
+class LinkedInScoreRequest(BaseModel):
+    content: str = Field(..., min_length=10, max_length=5000)
+
+class LinkedInThreadRequest(BaseModel):
+    content: str = Field(..., min_length=10, max_length=5000)
+
+class LinkedInFirstCommentRequest(BaseModel):
+    post_content: str = Field(..., min_length=10, max_length=5000)
+
+class LinkedInRemixRequest(BaseModel):
+    original_content: str = Field(..., min_length=10, max_length=5000)
+    company_name: str = Field(..., min_length=1, max_length=120)
+
+class LinkedInFetchAnalyzeRequest(BaseModel):
+    force: bool = False
+
+class LinkedInPostUpdateRequest(BaseModel):
+    planned_date: str | None = None
+    post_notes: str | None = None
+    status: str | None = None
+
+
+@app.post("/api/v2/linkedin/targets")
+async def add_linkedin_target(body: LinkedInTargetRequest):
+    from db import add_linkedin_target as db_add
+    id = str(uuid.uuid4())
+    db_add(id, body.company_name, body.linkedin_url, body.website_url)
+    return {"id": id, "ok": True}
+
+
+@app.get("/api/v2/linkedin/targets")
+async def get_linkedin_targets():
+    from db import list_linkedin_targets
+    return list_linkedin_targets()
+
+
+@app.delete("/api/v2/linkedin/targets/{target_id}")
+async def remove_linkedin_target(target_id: str):
+    from db import delete_linkedin_target
+    delete_linkedin_target(target_id)
+    return {"ok": True}
+
+
+@app.post("/api/v2/linkedin/fetch-analyze")
+async def fetch_and_analyze(body: LinkedInFetchAnalyzeRequest = Body(default_factory=LinkedInFetchAnalyzeRequest)):
+    from db import (get_company_profile, list_linkedin_targets, save_fetched_posts,
+                    save_linkedin_analysis, save_linkedin_ideas, get_latest_linkedin_analysis,
+                    list_fetched_posts)
+    from agents.posts import LinkedInPostsAgent
+    from agents.linkedin_analysis import LinkedInAnalysisAgent
+
+    # Staleness check — skip re-fetch if last analysis is < 45 min old and force=False
+    if not body.force:
+        latest = get_latest_linkedin_analysis()
+        if latest and latest.get("_fetched_at"):
+            try:
+                age = (datetime.now() - datetime.fromisoformat(latest["_fetched_at"])).total_seconds()
+                if age < 2700:  # 45 minutes
+                    latest["fetched_posts"] = list_fetched_posts()
+                    return {
+                        "analysis_id": None,
+                        "fetched_count": len(latest["fetched_posts"]),
+                        "analysis": latest,
+                        "fetched_posts": latest["fetched_posts"],
+                        "skipped": True,
+                        "age_minutes": round(age / 60),
+                    }
+            except Exception:
+                pass
+
+    company_profile = get_company_profile() or {}
+    own_company = company_profile.get("company_name", "")
+    targets = list_linkedin_targets()
+
+    # Parallel fetch: all companies at once using asyncio executor
+    loop = asyncio.get_event_loop()
+
+    async def fetch_one(company_name: str, company_url: str, source_type: str) -> list[dict]:
+        agent = LinkedInPostsAgent()
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: agent.run(company_name=company_name, lookback_months=3, limit=10, company_url=company_url or "")
+            )
+            posts = []
+            for p in result.get("posts", []):
+                posts.append({
+                    "id": str(uuid.uuid4()),
+                    "source_type": source_type,
+                    "company_name": company_name,
+                    "title": p.get("title", ""),
+                    "content": p.get("text", ""),
+                    "published_date": p.get("date", ""),
+                    "post_url": p.get("url", ""),
+                })
+            return posts
+        except Exception as e:
+            logger.warning(f"Fetch failed for {company_name}: {e}")
+            return []
+
+    tasks = []
+    if own_company:
+        tasks.append(fetch_one(own_company, company_profile.get("website_url", ""), "own"))
+    for target in targets:
+        tasks.append(fetch_one(target["company_name"], target.get("website_url", ""), "target"))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    all_fetched: list[dict] = []
+    for r in results:
+        if isinstance(r, list):
+            all_fetched.extend(r)
+
+    save_fetched_posts(all_fetched)
+
+    analysis = await loop.run_in_executor(
+        None,
+        lambda: LinkedInAnalysisAgent(client).run(own_company or "your company", all_fetched)
+    )
+    analysis_id = save_linkedin_analysis(analysis)
+
+    ideas = analysis.get("post_ideas", [])
+    if ideas:
+        save_linkedin_ideas(ideas)
+
+    return {
+        "analysis_id": analysis_id,
+        "fetched_count": len(all_fetched),
+        "analysis": analysis,
+        "fetched_posts": all_fetched,
+        "skipped": False,
+    }
+
+
+@app.get("/api/v2/linkedin/analysis")
+async def get_linkedin_analysis():
+    from db import get_latest_linkedin_analysis, list_fetched_posts, list_linkedin_ideas
+    analysis = get_latest_linkedin_analysis()
+    if not analysis:
+        return None
+    analysis["fetched_posts"] = list_fetched_posts()
+    analysis["post_ideas"] = list_linkedin_ideas()
+    return analysis
+
+
+@app.get("/api/v2/linkedin/ideas")
+async def get_linkedin_ideas():
+    from db import list_linkedin_ideas
+    return list_linkedin_ideas()
+
+
+@app.post("/api/v2/linkedin/ideas/{idea_id}/draft/start")
+async def start_idea_draft(idea_id: str):
+    from db import get_linkedin_idea, update_linkedin_idea_draft, get_company_profile
+    from agents.linkedin_draft import LinkedInDraftAgent
+
+    idea = get_linkedin_idea(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    company_profile = get_company_profile()
+    content = LinkedInDraftAgent(client).start_draft(idea, company_profile)
+    update_linkedin_idea_draft(idea_id, content)
+    return {"content": content}
+
+
+@app.post("/api/v2/linkedin/ideas/{idea_id}/draft/refine")
+async def refine_idea_draft(idea_id: str, body: LinkedInIdeaDraftRefineRequest):
+    from db import get_linkedin_idea, update_linkedin_idea_draft, get_company_profile, save_idea_history
+    from agents.linkedin_draft import LinkedInDraftAgent
+
+    idea = get_linkedin_idea(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    company_profile = get_company_profile()
+    try:
+        new_content = LinkedInDraftAgent(client).refine_draft(
+            body.current_content, body.message, body.history, company_profile
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Refine failed: {e}")
+
+    update_linkedin_idea_draft(idea_id, new_content)
+    save_idea_history(idea_id, "user", body.message)
+    save_idea_history(idea_id, "assistant", new_content)
+
+    new_history = body.history + [
+        {"role": "user", "content": body.message},
+        {"role": "assistant", "content": new_content},
+    ]
+    return {"content": new_content, "history": new_history}
+
+
+@app.post("/api/v2/linkedin/ideas/{idea_id}/publish")
+async def publish_idea_as_post(idea_id: str):
+    from db import get_linkedin_idea, update_linkedin_idea_status, save_linkedin_post
+    idea = get_linkedin_idea(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    draft = idea.get("draft_content", "")
+    if not draft:
+        raise HTTPException(status_code=400, detail="No draft content to publish")
+
+    post_id = str(uuid.uuid4())
+    save_linkedin_post({
+        "id": post_id,
+        "content": draft,
+        "strategy": idea.get("angle", "industry_take"),
+        "trend_cluster": idea.get("topic", ""),
+        "strategy_note": idea.get("rationale", ""),
+        "status": "draft",
+        "char_count": len(draft),
+        "created_at": datetime.now().isoformat(),
+    })
+    update_linkedin_idea_status(idea_id, "drafted")
+    return {"post_id": post_id}
+
+
+@app.patch("/api/v2/linkedin/posts/{post_id}")
+async def update_linkedin_post(post_id: str, body: LinkedInPostUpdateRequest):
+    from db import update_linkedin_post_fields
+    fields: dict = {}
+    if body.planned_date is not None:
+        fields["planned_date"] = body.planned_date
+    if body.post_notes is not None:
+        fields["post_notes"] = body.post_notes
+    if body.status is not None:
+        fields["status"] = body.status
+    if fields:
+        update_linkedin_post_fields(post_id, fields)
+    return {"ok": True}
+
+
+@app.get("/api/v2/linkedin/analytics")
+async def get_linkedin_analytics_endpoint():
+    from db import get_linkedin_analytics
+    return get_linkedin_analytics()
+
+
+@app.get("/api/v2/linkedin/scheduled")
+async def get_scheduled_posts_endpoint():
+    from db import get_scheduled_posts
+    return get_scheduled_posts()
+
+
+@app.get("/api/v2/linkedin/export-brief")
+async def export_content_brief():
+    from db import get_latest_linkedin_analysis, list_linkedin_posts, list_linkedin_ideas
+    import json as _json
+
+    analysis = get_latest_linkedin_analysis()
+    posts = list_linkedin_posts()
+    ideas = list_linkedin_ideas()
+    now_str = datetime.now().strftime("%B %d, %Y")
+
+    lines = [
+        f"# LinkedIn Content Brief — {now_str}",
+        "",
+    ]
+
+    if analysis:
+        lines += [
+            "## Content Landscape Analysis",
+            "",
+            analysis.get("timeline_summary", ""),
+            "",
+            f"**Posting cadence:** {analysis.get('own_cadence', '—')}",
+            f"**Best day to post:** {analysis.get('best_day_guess', '—')}",
+            "",
+        ]
+        if analysis.get("content_themes"):
+            lines += ["**Top themes:**"] + [f"- {t}" for t in analysis["content_themes"]] + [""]
+        if analysis.get("content_gaps"):
+            lines += ["**Content gaps:**"] + [f"- {g}" for g in analysis["content_gaps"]] + [""]
+
+    drafted_ideas = [i for i in ideas if i.get("status") in ("drafting", "drafted") and i.get("draft_content")]
+    if drafted_ideas:
+        lines += ["## Drafted Posts", ""]
+        for idea in drafted_ideas:
+            lines += [
+                f"### {idea['topic']} ({idea.get('angle', '')})",
+                "",
+                idea.get("draft_content", ""),
+                "",
+                f"*Format: {idea.get('suggested_format', '')}*",
+                "",
+                "---",
+                "",
+            ]
+
+    selected_posts = [p for p in posts if p.get("status") == "selected"]
+    if selected_posts:
+        lines += ["## Selected Posts (Ready to Publish)", ""]
+        for post in selected_posts:
+            planned = post.get("planned_date", "")
+            date_str = f" — Planned: {planned}" if planned else ""
+            lines += [
+                f"**{post.get('trend_cluster', 'Post')}{date_str}** ({post.get('strategy', '')})",
+                "",
+                post.get("content", ""),
+                "",
+                "---",
+                "",
+            ]
+
+    if analysis and analysis.get("post_ideas"):
+        lines += ["## Post Ideas Pipeline", ""]
+        for idea in analysis["post_ideas"]:
+            lines += [
+                f"- **{idea.get('topic', '')}** ({idea.get('angle', '')}) — {idea.get('suggested_format', '')}",
+                f"  → {idea.get('rationale', '')}",
+            ]
+        lines.append("")
+
+    brief = "\n".join(lines)
+    return {"brief": brief, "generated_at": datetime.now().isoformat(), "char_count": len(brief)}
+
+
+@app.post("/api/v2/linkedin/score-post")
+async def score_linkedin_post(body: LinkedInScoreRequest):
+    prompt = f"""You are a LinkedIn content coach. Score this B2B post critically.
+
+POST:
+{body.content}
+
+Return ONLY this JSON:
+{{
+  "scores": {{
+    "hook_strength": <0-10>,
+    "specificity": <0-10>,
+    "readability": <0-10>,
+    "cta_clarity": <0-10>,
+    "length_fit": <0-10>
+  }},
+  "overall": <weighted average * 10, 0-100>,
+  "suggestions": ["specific improvement 1", "specific improvement 2", "specific improvement 3"],
+  "verdict": "ready_to_post|needs_work|strong_post"
+}}
+
+Scoring guide:
+- hook_strength: does the first line compel you to read on?
+- specificity: are there concrete details, numbers, named examples?
+- readability: short sentences, natural flow, no jargon?
+- cta_clarity: does it end with a clear invitation to engage?
+- length_fit: is it the right length (sweet spot 800-1300 chars)?
+- overall: weighted average (hook×25 + specificity×25 + readability×20 + cta×15 + length×15)
+- verdict: strong_post ≥75, ready_to_post ≥55, needs_work <55"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=500,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        return _json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Scoring failed: {e}")
+
+
+@app.post("/api/v2/linkedin/build-thread")
+async def build_linkedin_thread(body: LinkedInThreadRequest):
+    prompt = f"""Convert this LinkedIn post into a compelling thread.
+
+POST:
+{body.content}
+
+Rules:
+- 5-7 parts
+- Each part under 280 characters
+- Part 1: the hook (most compelling line, standalone)
+- Middle parts: build the argument/story
+- Last part: CTA (follow / comment / question)
+- Each part ends with its number: "1/N", "2/N" etc (where N = total parts)
+
+Return ONLY this JSON:
+{{
+  "thread": [
+    {{"part": 1, "content": "..."}}
+  ],
+  "total_parts": <N>
+}}"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=800,
+            temperature=0.65,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        data = _json.loads(resp.choices[0].message.content)
+        thread = data.get("thread", [])
+        for part in thread:
+            part["char_count"] = len(part.get("content", ""))
+        return {"thread": thread, "total_parts": data.get("total_parts", len(thread))}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Thread build failed: {e}")
+
+
+@app.post("/api/v2/linkedin/first-comment")
+async def generate_first_comment(body: LinkedInFirstCommentRequest):
+    prompt = f"""You are a LinkedIn growth expert. Write the ideal first comment to pin immediately after publishing this post.
+
+POST:
+{body.post_content}
+
+The first comment should add value the post didn't cover: a key stat, a follow-up insight, a resource, or an engaging question. Under 200 characters.
+
+Return ONLY this JSON:
+{{
+  "comment": "the comment text",
+  "rationale": "one sentence — why this boosts reach"
+}}"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=200,
+            temperature=0.6,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        return _json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"First comment generation failed: {e}")
+
+
+@app.post("/api/v2/linkedin/remix-post")
+async def remix_competitor_post(body: LinkedInRemixRequest):
+    from db import get_company_profile
+    company_profile = get_company_profile() or {}
+    own_company = company_profile.get("company_name", "our company")
+    services = ", ".join(company_profile.get("services", [])[:3])
+    usps = company_profile.get("usps", "")
+
+    prompt = f"""You are a content strategist. A competitor posted this:
+
+ORIGINAL (by {body.company_name}):
+{body.original_content}
+
+YOUR COMPANY: {own_company}
+YOUR OFFERING: {f"{services}. " if services else ""}{usps}
+
+Task: Rewrite this post for {own_company} — keep the SAME structure, format, and hook pattern that makes the original effective. Change only the company context and value proposition. Do not copy phrases directly.
+
+Return ONLY this JSON:
+{{
+  "remixed_content": "the remixed post text",
+  "format_kept": "e.g. stat-opener → problem → solution → outcome (1 sentence)",
+  "what_changed": "brief explanation of what was adapted"
+}}"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=600,
+            temperature=0.7,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        return _json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Remix failed: {e}")
 
 
 @app.post("/api/v2/email/{email_id}/refine")
@@ -1055,3 +1644,203 @@ async def delete_prospect(prospect_id: str):
         raise HTTPException(status_code=404, detail="Prospect not found")
     del prospects_db[prospect_id]
     return {"deleted": True}
+
+
+# ── Contacts DB ────────────────────────────────────────────────────────────────
+
+@app.get("/api/v2/contacts")
+async def get_all_contacts():
+    from db import list_all_prospects_with_context
+    return list_all_prospects_with_context()
+
+
+@app.patch("/api/v2/contacts/{prospect_id}/status")
+async def update_contact_status(prospect_id: str, body: ContactStatusUpdate):
+    from db import update_prospect_status, _ALLOWED_PROSPECT_STATUSES
+    if body.status not in _ALLOWED_PROSPECT_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {sorted(_ALLOWED_PROSPECT_STATUSES)}")
+    update_prospect_status(prospect_id, body.status)
+    return {"ok": True}
+
+
+# ── Outreach Tracker ───────────────────────────────────────────────────────────
+
+@app.get("/api/v2/outreach")
+async def get_all_outreach():
+    from db import list_all_emails_with_context
+    return list_all_emails_with_context()
+
+
+@app.patch("/api/v2/outreach/{email_id}")
+async def update_outreach_tracking(email_id: str, body: EmailTrackingUpdate):
+    from db import update_email_tracking
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    update_email_tracking(email_id, fields)
+    return {"ok": True}
+
+
+# ── BD Playbook (AI battle cards) ─────────────────────────────────────────────
+
+@app.get("/api/v2/playbook")
+async def get_playbook():
+    from db import get_all_completed_intelligence
+    intelligence_list = get_all_completed_intelligence()
+    if not intelligence_list:
+        return {"battle_cards": [], "total_companies": 0, "generated_at": datetime.now().isoformat(),
+                "message": "No completed analyses yet. Research some companies first."}
+
+    # Group by industry
+    by_industry: dict[str, list[dict]] = {}
+    for intel in intelligence_list:
+        industry = (intel.get("company_overview") or {}).get("industry") or "General"
+        by_industry.setdefault(industry, []).append(intel)
+
+    industry_blocks = []
+    for industry, entries in list(by_industry.items())[:8]:  # cap at 8 industries
+        companies = [e["_company_name"] for e in entries]
+        pain_points = []
+        opportunities = []
+        for e in entries:
+            raw_pp = e.get("pain_points", [])
+            if isinstance(raw_pp, list):
+                for pp in raw_pp[:2]:
+                    txt = pp.get("title", pp) if isinstance(pp, dict) else pp
+                    if txt:
+                        pain_points.append(str(txt))
+            raw_opp = e.get("bd_opportunities", [])
+            if isinstance(raw_opp, list):
+                opportunities += [str(o) for o in raw_opp[:2] if o]
+        industry_blocks.append(
+            f"INDUSTRY: {industry}\n"
+            f"Companies: {', '.join(companies)}\n"
+            f"Pain points: {'; '.join(pain_points[:5])}\n"
+            f"Opportunities: {'; '.join(opportunities[:4])}"
+        )
+
+    prompt = f"""You are a senior BD strategist. Create objection-handling battle cards for each industry group.
+
+{chr(10).join(industry_blocks)}
+
+Return ONLY this JSON:
+{{
+  "battle_cards": [
+    {{
+      "industry": "Industry name",
+      "companies": ["Company A"],
+      "key_pain_points": ["specific pain 1", "specific pain 2", "specific pain 3"],
+      "objections": [
+        {{"objection": "We already have a solution", "response": "Specific, confident 2-sentence reframe"}},
+        {{"objection": "Budget is tight this quarter", "response": "Specific reframe showing ROI angle"}},
+        {{"objection": "We need to involve more stakeholders", "response": "Champion-building response"}}
+      ],
+      "talk_tracks": [
+        "Track 1 (Pain-led): ...",
+        "Track 2 (Opportunity-led): ...",
+        "Track 3 (Competitive-led): ..."
+      ],
+      "winning_angle": "The single most effective pitch angle for this specific industry"
+    }}
+  ]
+}}"""
+
+    try:
+        loop = asyncio.get_event_loop()
+        def _call():
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile", max_tokens=3000, temperature=0.4,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return extract_json(resp.choices[0].message.content)
+        result = await loop.run_in_executor(None, _call)
+        result["total_companies"] = len(intelligence_list)
+        result["generated_at"] = datetime.now().isoformat()
+        return result
+    except Exception as e:
+        logger.error(f"Playbook generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Playbook generation failed: {e}")
+
+
+# ── Morning Brief ──────────────────────────────────────────────────────────────
+
+@app.get("/api/v2/brief")
+async def get_morning_brief():
+    from db import get_stats, get_all_completed_intelligence, list_all_prospects_with_context, get_company_profile
+    stats = get_stats()
+    profile = get_company_profile() or {}
+    company_name = profile.get("company_name", "your company")
+    intelligence_list = get_all_completed_intelligence()
+    all_prospects = list_all_prospects_with_context()
+
+    # Hot prospects: high confidence + new/contacted + high engagement
+    hot = [
+        p for p in all_prospects
+        if p.get("confidence") in ("high", "medium")
+        and p.get("prospect_status") in ("new", "contacted", None, "")
+        and p.get("engagement_score", 0) >= 50
+    ]
+    hot.sort(key=lambda x: x.get("engagement_score", 0), reverse=True)
+    hot = hot[:5]
+
+    # Recent analyses
+    recent = intelligence_list[:5]
+    recent_block = "\n".join(
+        f"- {r['_company_name']}: {(r.get('company_overview') or {}).get('industry', 'N/A')}, "
+        f"engagement {(r.get('engagement_score') or {}).get('score', '?')}"
+        for r in recent
+    )
+
+    hot_block = "\n".join(
+        f"- {p['name']} ({p['title']}) at {p.get('company_name', '?')}, "
+        f"confidence={p['confidence']}, engagement={p.get('engagement_score', '?')}"
+        for p in hot
+    ) or "No high-confidence prospects yet."
+
+    today = datetime.now().strftime("%A, %B %d %Y")
+    prompt = f"""You are a BD intelligence assistant. Generate a morning brief for {company_name}.
+
+TODAY: {today}
+PIPELINE: {stats['total_pipelines']} researched, {stats['active_pipelines']} in-progress, {stats['completed_pipelines']} complete
+AVG ENGAGEMENT SCORE: {stats['avg_engagement_score']}
+TOTAL PROSPECTS IDENTIFIED: {stats['total_prospects_identified']}
+
+HOT PROSPECTS TO FOLLOW UP:
+{hot_block}
+
+RECENT ANALYSES:
+{recent_block}
+
+Return ONLY this JSON:
+{{
+  "executive_summary": "2-3 sentence strategic summary — what matters today, what momentum exists",
+  "hot_prospects": [
+    {{"name": "Name", "company": "Company", "score": 85, "reason": "Why they are hot right now — specific signal"}}
+  ],
+  "pipeline_health": [
+    {{"label": "Completion Rate", "value": "75%", "status": "good"}},
+    {{"label": "Avg Engagement", "value": 72, "status": "good"}},
+    {{"label": "Active Pipelines", "value": {stats['active_pipelines']}, "status": "neutral"}},
+    {{"label": "Prospects Ready", "value": {len(hot)}, "status": "good"}}
+  ],
+  "recommended_actions": [
+    {{"priority": "high", "action": "Specific action to take today", "company": "company name or null"}},
+    {{"priority": "medium", "action": "Another action this week", "company": null}},
+    {{"priority": "low", "action": "Longer horizon action", "company": null}}
+  ],
+  "linkedin_tip": "One specific, tactical LinkedIn content tip based on the BD pipeline context"
+}}"""
+
+    try:
+        loop = asyncio.get_event_loop()
+        def _call():
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile", max_tokens=1200, temperature=0.5,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return extract_json(resp.choices[0].message.content)
+        result = await loop.run_in_executor(None, _call)
+        result["date"] = today
+        result["generated_at"] = datetime.now().isoformat()
+        return result
+    except Exception as e:
+        logger.error(f"Brief generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Brief generation failed: {e}")

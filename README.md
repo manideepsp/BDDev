@@ -1,4 +1,4 @@
-# Nexus BD — AI Business Development Intelligence
+# KS Business — Knowledge Systems BD Intelligence
 
 > **CRAIL Hackathon 2026** — A multi-agent pipeline that researches companies, scores engagement fit, identifies prospects, and generates hyper-personalised outreach — in under 30 seconds.
 
@@ -20,15 +20,16 @@ The result is inconsistent output, missed signals, and response rates that make 
 
 ## The Solution
 
-Nexus BD collapses that 2–3 hour cycle into **a 30-second multi-agent pipeline**. You enter a company name, your offering, and an optional URL. The system:
+KS Business collapses that 2–3 hour cycle into **a 30-second multi-agent pipeline**. You enter a company name, your offering, and an optional URL. The system:
 
 - Scrapes the company website, LinkedIn org profile, recent posts, open job listings, and key personnel — **concurrently**
 - Runs a **People Swarm**: one enrichment agent per discovered person fires in parallel to assess seniority, role category, and BD relevance
 - Embeds every gathered fact into a **per-pipeline Qdrant vector namespace** for retrieval-augmented synthesis
 - **Pauses for your review** — prune irrelevant people, exclude noisy posts, inject context the agents couldn't find
 - Synthesises an **evidence-first intelligence report**: pain points with severity, ICP fit score (1–100 across six dimensions), prospects with contact angles, competitive landscape, and traceable sources
-- Generates per-prospect **POC engagement plans** and **personalised outreach emails** on demand — 3 subject-line variants, configurable tone and word limit, personalization hook anchored on a real signal
+- Generates per-prospect **POC engagement plans** and **5-type personalised outreach** on demand — cold email, follow-up, LinkedIn message, LinkedIn connection request, or call script; configurable tone and word limit, personalization hook anchored on a real signal
 - Embeds completed pipelines into a shared Qdrant collection that powers a **cumulative Market Intelligence view**
+- Tracks **deal outcomes** to feed ICP calibration data back into future scoring
 
 ---
 
@@ -39,10 +40,11 @@ flowchart LR
     Browser(["🖥️ Browser\nNext.js App Router"])
 
     subgraph Backend["FastAPI Backend · Python 3.12"]
+        Auth["JWT Auth\n/api/auth/*"]
         API["REST API\n/api/v2/*"]
         Orch["Pipeline Orchestrator\nasyncio background task"]
-        Agents["Agent Layer\n14 specialised agents"]
-        DB[("SQLite\nnexus.db")]
+        Agents["Agent Layer\n15 specialised agents"]
+        DB[("SQLite\nks_business.db")]
     end
 
     subgraph External["External Services"]
@@ -52,6 +54,7 @@ flowchart LR
         Web["🌐 Public Web\nwebsites · LinkedIn · news"]
     end
 
+    Browser -->|"HTTP · JSON\ncookie auth"| Auth
     Browser -->|"HTTP · JSON"| API
     API --> Orch
     Orch --> Agents
@@ -105,8 +108,9 @@ flowchart TD
     subgraph OnDemand["✨ ON DEMAND — per prospect"]
         direction LR
         PP["📋 POC Plan Agent · LLM\nobjective · approach · timeline\ntalking points · success metrics · risks"]
-        EG["✉️ Email Generator · LLM\n3 subject variants · configurable tone + word limit\npersonalization hook anchored on real signal"]
+        EG["✉️ Outreach Generator · LLM\n5 message types: cold email · follow-up · LinkedIn message\nLinkedIn connection · call script\n15 banned phrases enforced · specificity rules"]
         PA["📦 Pitch Asset Agent · LLM\nexec summary · short + detailed cold emails\nLinkedIn note · 5 discovery talking points"]
+        DO["📊 Deal Outcome\nwon · lost · no-response · meeting-booked\nfeeds ICP calibration loop"]
     end
 
     MI["📈 Market Intelligence\nQdrant clustering → trend themes + cross-portfolio BD opportunities"]
@@ -175,10 +179,13 @@ sequenceDiagram
     Orch->>DB: status = complete + save intelligence + prospects
 
     User->>API: POST /api/v2/pipeline/{id}/email
-    API->>LLM: EmailGeneratorAgent — 3 subjects + body
-    LLM-->>API: email JSON
+    API->>LLM: OutreachGeneratorAgent — 5 message types · banned phrases enforced
+    LLM-->>API: outreach JSON
     API->>DB: save_email
-    API-->>User: email with personalization_hook
+    API-->>User: outreach with personalization_hook
+
+    User->>API: POST /api/v2/pipeline/{id}/deal-outcome
+    API->>DB: save_deal_outcome + update ICP calibration stats
 ```
 
 ### Tools used by each agent
@@ -190,15 +197,16 @@ sequenceDiagram
 | **PostsAgent** | `requests` · `BeautifulSoup4` · `duckduckgo-search` | Posts: title, text, url, source, date |
 | **JobsAgent** | `duckduckgo-search` · `requests` | Jobs: title, location, url, snippet |
 | **PeopleAgent + Swarm** | `duckduckgo-search` · `requests` · Groq LLM (one call per person) | People: name, title, seniority, role category, BD relevance |
+| **EnrichmentAgent** | Apollo API (if set) → Hunter.io (if set) → pattern inference | Contact email, phone, social URLs |
 | **KeywordAgent** | Groq LLM | Keywords, product areas, target personas, tech signals |
 | **ResearchAgent** | `duckduckgo-search` / `tavily-python` (4 angle searches) | Research results: title, url, snippet, angle |
 | **CrawlerAgent** | `requests` · `BeautifulSoup4` · `duckduckgo-search` | Crawl findings for thin public footprints |
 | **RAGIndexer** | `fastembed` (ONNX) · `qdrant-client` | Embedded chunks in per-pipeline Qdrant namespace |
 | **RAGRetriever** | Groq LLM (query planning) · `qdrant-client` (ANN search) | Top-k retrieved chunks |
-| **InsightsAgent** | Groq LLM · RAG context | Intelligence report: pain points, ICP score, prospects, competitive analysis |
-| **VectorStoreAgent** | `fastembed` · `qdrant-client` | Company embedding in shared `nexus_bd_intelligence` collection |
-| **POCPlanAgent** | Groq LLM (JSON mode) | POC: objective, approach, timeline, talking points, risks |
-| **EmailGeneratorAgent** | Groq LLM (JSON mode · temperature 0.72) | 3 subject variants, email body, follow-up, personalization hook |
+| **InsightsAgent** | Groq LLM · RAG context · 17 banned generic phrases | Intelligence report: pain points, ICP score, prospects, competitive analysis |
+| **VectorStoreAgent** | `fastembed` · `qdrant-client` | Company embedding in shared `ks_business_intelligence` collection |
+| **POCPlanAgent** | Groq LLM · 7 deal-type detection · specificity rules | POC: objective, approach, timeline, talking points, risks |
+| **OutreachGeneratorAgent** | Groq LLM · EMAIL_PLAYBOOK · 15 banned phrases | 5 message types, personalization hook anchored on real signal |
 | **PitchAssetAgent** | Groq LLM (JSON mode · 4096 tokens) | Exec summary, 2 cold emails, LinkedIn note, 5 talking points |
 | **MarketTrendsGenerator** | `qdrant-client` · `scipy` (k-means) · Groq LLM | Trend clusters with theme, insight, BD opportunity |
 
@@ -227,27 +235,79 @@ flowchart LR
 
 ---
 
-### Email generation detail
+### Outreach generation detail
 
-The email generator follows an expert B2B sales copywriter framework — not a generic template.
+The outreach generator produces one of 5 message types — chosen by the user based on the current stage of the sales motion. All 15 banned phrases are enforced on every output.
 
 ```mermaid
 flowchart LR
-    R["Research signals\npain points · recent developments\nkeywords · POC value prop"]
-    U["User inputs\nsender · offering\ntrigger event · LinkedIn quote\ntone · word limit"]
+    R["Research signals\npain points · recent developments\nkeywords · POC value prop\nurgency trigger"]
+    U["User inputs\nsender · offering · message type\ntrigger event · pain focus\ntone · word limit"]
 
-    subgraph Prompt["Email Prompt Assembly"]
+    subgraph Prompt["Prompt Assembly"]
         direction TB
-        F["Framework\nsharp opener → value bridge → 15-min CTA"]
-        P["Playbook\nnon-negotiable reply-rate rules\nbanned openers · no links · 1 CTA"]
+        F["Framework\nsharp opener → value bridge → 1 CTA"]
+        P["Playbook\n15 banned phrases · no generic claims\npersona detection · specificity rules"]
     end
 
     LLM["☁️ Groq LLM\nJSON mode · temperature 0.72"]
 
-    Out["Output\n3 subject line variants\nprimary email body\nfollow-up · personalization hook\nkeywords woven in"]
+    Out["Output (one of 5 types)\ncold_email · follow_up_email\nlinkedin_message · linkedin_connection\ncall_script\n+ personalization hook"]
 
     R & U --> Prompt --> LLM --> Out
 ```
+
+**The 15 banned phrases** (never appear in generated outreach):
+`I hope this finds you well`, `I wanted to reach out`, `touching base`, `circle back`, `game-changer`, `revolutionary`, `synergies`, `cutting-edge`, `leverage`, `at the end of the day`, `move the needle`, `low-hanging fruit`, `reach out`, `pain points`, `value proposition`
+
+---
+
+## Authentication
+
+KS Business uses **JWT cookie authentication** — fully stateless, no external auth provider.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Next.js
+    participant MW as Middleware
+    participant API as FastAPI Auth
+
+    User->>UI: GET /dashboard (unauthenticated)
+    MW->>UI: redirect → /login
+    User->>UI: POST /login (email + password)
+    UI->>API: POST /api/auth/login
+    API-->>UI: Set-Cookie: ks_token=<JWT> (HttpOnly, 7d)
+    UI->>UI: redirect → /dashboard
+    User->>UI: GET /analyze
+    MW->>API: verify cookie token
+    API-->>MW: user payload
+    MW->>UI: allow
+```
+
+- Passwords hashed with **bcrypt** (cost factor 12)
+- Tokens are **HS256 JWTs** signed with `JWT_SECRET_KEY`, 7-day expiry
+- Cookie is `HttpOnly`, `SameSite=Lax` — no XSS exposure
+- Next.js middleware (`src/middleware.ts`) protects all routes except `/login` and `/register`
+
+---
+
+## Design System
+
+The frontend is built on **shadcn/ui patterns** — Radix UI primitives composed with `class-variance-authority` and Tailwind CSS design tokens. All colours are CSS custom properties in `globals.css`.
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--primary` | `243 75% 59%` (#5B50F7 indigo-violet) | Buttons, active states, links |
+| `--sidebar` | `232 36% 7%` (#0A0C14 near-black) | Sidebar background |
+| `--background` | `220 20% 97%` (#F4F5FA) | Page background |
+| `--card` | `0 0% 100%` | Card surfaces |
+| `--success` | `152 61% 40%` (#27A862) | High confidence, won deals |
+| `--warning` | `38 92% 50%` | Medium confidence, active |
+| `--danger` | `0 84% 60%` | Low confidence, failed, lost |
+| `--radius` | `0.75rem` | Border radius for all cards |
+
+Components: `Button` (6 variants + 7 sizes) · `Card` / `CardHeader` / `CardContent` · `Badge` (14 variants) · `Input` (with optional icon slot) · `Textarea` · `Select` · `Tabs` (Radix) · `Progress` (Radix) · `Skeleton` · `Separator`
 
 ---
 
@@ -258,14 +318,16 @@ flowchart LR
 | **Groq `llama-3.3-70b-versatile`** | ~400 tok/s on the free tier — fast enough for 5–15 LLM calls per pipeline with real-time UI feedback |
 | **fastembed `BAAI/bge-small-en-v1.5`** | 384-dim ONNX model, runs on CPU, no API key, ships as a binary — embeddings are free and sub-second |
 | **Qdrant Cloud free tier** | Persistent hosted ANN vector search; backend stays stateless. Gracefully skipped if `QDRANT_URL` is absent |
-| **SQLite via stdlib `sqlite3`** | Zero extra dependencies — no Docker Compose, no Postgres. Fly.io mounts a persistent volume at `/data/nexus.db` |
+| **SQLite via stdlib `sqlite3`** | Zero extra dependencies — no Docker Compose, no Postgres. Fly.io mounts a persistent volume at `/data/ks_business.db` |
+| **JWT cookie auth (no OAuth)** | Self-contained, no external provider, no rate limits. HttpOnly cookie means no token storage in JS — XSS-safe |
+| **5-type outreach generator** | Different sales stages need different formats. A cold email, a LinkedIn connection request, and a call script follow completely different rules — one generator shouldn't try to do all three |
+| **15 banned phrases enforced** | Generic openers ("I hope this finds you well") are the single biggest predictor of low reply rates. Enforcing a banlist at prompt level costs nothing and directly improves output quality |
 | **Concurrent gather phase** | `asyncio.gather` across website, LinkedIn, posts, jobs cuts ~25 s serial scraping to ~5 s wall-clock time |
 | **People Swarm** | Enriching 8 people one-at-a-time is 8× slower. One `asyncio.create_task` per person (capped at 8) reduces it to the slowest single call |
 | **Human checkpoint** | The gather phase surfaces raw, unfiltered data. Pruning irrelevant people and noisy posts *before* synthesis directly improves the evidence the LLM reasons over — this is a quality gate, not a UX feature |
 | **RAG-grounded synthesis** | Stuffing 15,000 characters of raw scraped text into one prompt dilutes signal and risks context-length errors. Embedding everything and retrieving the top-k chunks per query keeps the synthesis context compact and high-signal |
-| **DuckDuckGo default, Tavily optional** | DDG is free, keyless, and works well for company searches. Set `TAVILY_API_KEY` to upgrade to higher-quality results with no code changes |
-| **JSON mode on all LLM calls** | `response_format={"type":"json_object"}` on Groq eliminates the class of 502 errors caused by the model truncating mid-JSON |
-| **Next.js App Router + Tailwind 3** | App Router enables per-route metadata and streaming with zero config. Tailwind keeps the CSS bundle tiny and the design system consistent without a component library |
+| **Deal outcome tracking** | Closing the loop — tracking won/lost/no-response outcomes against the ICP score creates a calibration dataset that improves future scoring without any manual tuning |
+| **shadcn/ui design system** | CSS custom properties + cva components make it trivial to swap colour themes, support dark mode, or white-label the app without touching component logic |
 
 ---
 
@@ -274,7 +336,9 @@ flowchart LR
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 15 (App Router) · TypeScript · Tailwind CSS 3 · React 19 |
+| UI components | shadcn/ui pattern — Radix UI primitives + `class-variance-authority` + design tokens |
 | Backend | Python 3.12 · FastAPI · SQLite (stdlib `sqlite3`) |
+| Auth | JWT (`python-jose`) · bcrypt · HttpOnly cookies |
 | LLM | Groq `llama-3.3-70b-versatile` (JSON mode, temperature-tuned per agent) |
 | Scraping | `requests` · `BeautifulSoup4` |
 | Web search | DuckDuckGo (`duckduckgo-search`) — Tavily optional |
@@ -289,8 +353,9 @@ flowchart LR
 ```
 BDDev/
 ├── backend/
-│   ├── main.py               # FastAPI app — all v1 + v2 endpoints, CORS, Groq init
-│   ├── db.py                 # SQLite CRUD — pipelines, prospects, emails, feedback
+│   ├── main.py               # FastAPI app — all v1 + v2 endpoints, auth, CORS, Groq init
+│   ├── auth.py               # JWT/bcrypt auth — register, login, logout, /me
+│   ├── db.py                 # SQLite CRUD — pipelines, prospects, emails, users, deal outcomes
 │   ├── pipeline.py           # Async orchestrator + market trends generator
 │   ├── utils.py              # extract_json() — JSON parsing, fence stripping, fallback
 │   ├── agents/
@@ -299,14 +364,15 @@ BDDev/
 │   │   ├── posts.py          # Recent posts — site blog → LinkedIn → DDG strict filter
 │   │   ├── jobs.py           # Open roles scraper → hiring + tech signals
 │   │   ├── people.py         # People discovery + parallel swarm enrichment
+│   │   ├── enrichment.py     # Contact enrichment (Apollo → Hunter → pattern inference)
 │   │   ├── keywords.py       # LLM keyword extraction from gathered context
 │   │   ├── researcher.py     # Multi-angle web research (DDG/Tavily, dynamic year)
 │   │   ├── crawler.py        # Deep crawl fallback for thin public footprints
 │   │   ├── rag.py            # Chunk, embed, index + LLM-query retrieval
 │   │   ├── embedder.py       # Shared fastembed + Qdrant client singletons
-│   │   ├── insights.py       # RAG-grounded synthesis — pain points, ICP, prospects
-│   │   ├── poc_plan.py       # POC engagement plan per prospect (JSON mode)
-│   │   ├── email_gen.py      # B2B email generator — 3 subjects, playbook, JSON mode
+│   │   ├── insights.py       # RAG-grounded synthesis — pain points, ICP, prospects (17 banned phrases)
+│   │   ├── poc_plan.py       # POC engagement plan per prospect (7 deal types, specificity rules)
+│   │   ├── email_gen.py      # 5-type outreach generator (15 banned phrases, persona detection)
 │   │   ├── pitch.py          # Full pitch-asset bundle (JSON mode, 4096 tokens)
 │   │   └── vector_store.py   # Cumulative market-trends embedding store
 │   ├── Dockerfile
@@ -316,13 +382,25 @@ BDDev/
 │   └── src/
 │       ├── app/
 │       │   ├── page.tsx                       # Dashboard — KPIs + pipeline history table
+│       │   ├── login/page.tsx                 # Login — JWT cookie auth
+│       │   ├── register/page.tsx              # Register — bcrypt password hashing
 │       │   ├── analyze/page.tsx               # Analysis form — agent stage preview, advanced settings
 │       │   ├── pipeline/[id]/page.tsx          # Live progress tracker + human review + results
-│       │   ├── pipeline/[id]/prospect/[pid]/   # Prospect detail — POC plan + email generator + pitch bundle
-│       │   └── trends/page.tsx                # Market Intelligence — clustered BD trends
+│       │   ├── pipeline/[id]/prospect/[pid]/   # Prospect detail — POC plan + 5-type outreach + deal outcome
+│       │   ├── trends/page.tsx                # Market Intelligence — clustered BD trends
+│       │   ├── linkedin/page.tsx              # LinkedIn Intelligence Hub
+│       │   ├── market-map/page.tsx            # Market Map — ICP scored company grid
+│       │   ├── contacts/page.tsx              # Contacts — people across all pipelines
+│       │   ├── outreach/page.tsx              # Outreach Tracker — sequence status
+│       │   ├── playbook/page.tsx              # BD Playbook — saved plays + templates
+│       │   └── brief/page.tsx                 # Morning Brief — daily BD digest
 │       ├── components/
-│       │   ├── Sidebar.tsx                    # Nav, brand, pipeline stage legend
+│       │   ├── Sidebar.tsx                    # Dark sidebar — KS Business brand, all nav
+│       │   ├── AuthShell.tsx                  # Conditionally renders Sidebar (suppressed on /login, /register)
 │       │   └── Feedback.tsx                   # Thumbs up/down on generated outputs
+│       ├── contexts/
+│       │   └── AuthContext.tsx                # Auth state — user, loading, refresh, logout
+│       ├── middleware.ts                      # Next.js middleware — redirects unauthenticated to /login
 │       └── lib/api.ts                         # Typed API client — all endpoints + interfaces
 ├── .github/workflows/
 │   ├── ci.yml                # TypeScript check + backend import smoke test
@@ -334,21 +412,26 @@ BDDev/
 
 ## Feature Walkthrough
 
-### 1. New Analysis (`/analyze`)
+### 1. Auth (`/login`, `/register`)
+JWT cookie authentication. Register with email + password (bcrypt, cost 12). Login sets an HttpOnly 7-day cookie. Next.js middleware redirects unauthenticated users to `/login` before any route renders. Logout clears the cookie server-side.
+
+### 2. New Analysis (`/analyze`)
 Enter a company name, optional URL, and a description of your offering. Deal size and priority tag the pipeline for dashboard segmentation. Advanced settings expose post lookback months and max posts — useful for surfacing recency signals in fast-moving sectors. The right panel shows every agent stage with an estimated runtime, so the user understands they're watching a real pipeline, not a spinner.
 
-### 2. Pipeline View (`/pipeline/{id}`)
+### 3. Pipeline View (`/pipeline/{id}`)
 Polls every 2.5 seconds. The stage tracker shows all 8 stages; the active one pulses amber. On `awaiting_input`, the human review panel appears — gathered content (people, posts, jobs, crawl findings, website pages) grouped into cluster cards. The reviewer can exclude items by index and inject free-text context before clicking Continue to synthesis.
 
 Once complete: full intelligence report with company overview, 88 px SVG engagement score ring, 6-axis ICP score breakdown, pain points with severity + evidence chips, BD opportunities, prospects grid, competitive landscape, tech stack, and clickable sources.
 
-### 3. Prospect Detail (`/pipeline/{id}/prospect/{pid}`)
-Three-section layout. The POC plan auto-generates on first load (~3 s). The email generator form is fully configurable: trigger event (pre-filled from `recent_developments[0]`, editable), LinkedIn quote field (overrides trigger as the opener when filled), tone toggle (professional / conversational / bold), and a word-limit slider (75–500 words, step 25). Generates three subject-line variants shown as selectable radio cards — pick one and it flows into the Copy Full Email action. The "Anchored on" badge shows exactly which real signal made the email non-generic.
+### 4. Prospect Detail (`/pipeline/{id}/prospect/{pid}`)
+Three-section layout. The POC plan auto-generates on first load (~3 s). The outreach generator lets you pick **one of 5 message types**: cold email, follow-up email, LinkedIn message, LinkedIn connection request, or call script. Each type has a purpose-built prompt with the right length, format, and CTA constraints. The pain focus field selects which of the identified pain points to anchor on. The "Anchored on" badge shows exactly which real signal made the outreach non-generic.
 
-### 4. Dashboard (`/`)
+Log the result with the **Deal Outcome** modal — won, lost, no-response, or meeting booked — to feed the ICP calibration loop.
+
+### 5. Dashboard (`/`)
 Four KPI cards with staggered entrance animations (total pipelines, active, prospects identified, avg engagement score). The pipeline table shows every company with a live-pulse dot for active runs, a mini engagement score ring, status pill, and a direct View link.
 
-### 5. Market Intelligence (`/trends`)
+### 6. Market Intelligence (`/trends`)
 Powered by the shared Qdrant collection. Requires 3+ completed pipelines to unlock clustering. Each cluster card shows the theme, the companies grouped into it, a market signal paragraph, and an emerald "BD Opportunity" callout. A progress bar shows how close you are to the 3-company threshold. Each cluster links directly to `/analyze` — the market map becomes a prospecting tool.
 
 ---
@@ -374,7 +457,7 @@ cd backend
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env — set GROQ_API_KEY at minimum
+# Edit .env — set GROQ_API_KEY and JWT_SECRET_KEY at minimum
 uvicorn main:app --reload --port 8000
 
 # 3. Frontend (new terminal)
@@ -383,18 +466,26 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). You'll be redirected to `/register` to create your first account.
 
 ### Environment variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GROQ_API_KEY` | **Yes** | [console.groq.com](https://console.groq.com) — free tier works |
+| `JWT_SECRET_KEY` | **Yes** | Any random 32+ char string for signing JWT tokens |
 | `QDRANT_URL` | No | Qdrant Cloud cluster URL — Market Intelligence disabled without it |
 | `QDRANT_API_KEY` | No | Qdrant Cloud API key |
 | `TAVILY_API_KEY` | No | [tavily.com](https://tavily.com) — higher-quality search; DDG is the default |
 | `ALLOWED_ORIGINS` | No | CORS origins, comma-separated (default: `localhost:3000`) |
-| `DB_PATH` | No | SQLite file path (default: `nexus.db`; Fly.io uses `/data/nexus.db`) |
+| `DB_PATH` | No | SQLite file path (default: `ks_business.db`; Fly.io uses `/data/ks_business.db`) |
+| `APOLLO_API_KEY` | No | Apollo.io — contact enrichment (email/phone lookup) |
+| `HUNTER_API_KEY` | No | Hunter.io — email pattern inference fallback |
+
+Generate a secure `JWT_SECRET_KEY`:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
 
 ### Production deployment
 
@@ -404,25 +495,35 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full Fly.io + Vercel + GitHub A
 
 ## API Reference
 
+### Auth
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/auth/register` | Create account `{email, password, full_name}` |
+| `POST` | `/api/auth/login` | Login `{email, password}` → sets HttpOnly cookie |
+| `POST` | `/api/auth/logout` | Clear cookie |
+| `GET` | `/api/auth/me` | Current user info |
+
 ### V2 Pipeline
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/v2/analyze` | Start a pipeline (async — gather phase runs in background) |
 | `GET` | `/api/v2/pipeline/{id}` | Poll status + gathered data + intelligence |
-| `POST` | `/api/v2/pipeline/{id}/continue` | Resume after human checkpoint — human input, removed people, excluded items |
+| `POST` | `/api/v2/pipeline/{id}/continue` | Resume after human checkpoint |
 | `GET` | `/api/v2/pipelines` | List all pipelines |
 | `GET` | `/api/v2/pipeline/{id}/prospects` | Get identified prospects |
 | `POST` | `/api/v2/pipeline/{id}/poc-plan` | Generate POC plan for a prospect |
-| `POST` | `/api/v2/pipeline/{id}/email` | Generate personalised outreach email (3 subject variants) |
-| `GET` | `/api/v2/pipeline/{id}/emails` | Retrieve generated emails |
+| `POST` | `/api/v2/pipeline/{id}/email` | Generate personalised outreach (5 types) |
+| `GET` | `/api/v2/pipeline/{id}/emails` | Retrieve generated outreach |
 | `POST` | `/api/v2/pipeline/{id}/pitch-assets` | Generate full pitch bundle |
+| `POST` | `/api/v2/pipeline/{id}/deal-outcome` | Log deal outcome for ICP calibration |
 | `GET` | `/api/v2/trends` | Market intelligence clusters from Qdrant |
 | `GET` | `/api/stats` | Dashboard KPIs |
 | `GET/PUT` | `/api/company-profile` | Sender profile for email sign-offs |
 | `POST` | `/api/feedback` | Thumbs up/down on generated outputs |
 
-#### Email request body
+#### Outreach request body
 
 ```json
 {
@@ -430,10 +531,22 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full Fly.io + Vercel + GitHub A
   "sender_name": "string",
   "sender_company": "string",
   "sender_offering": "string",
+  "message_type": "cold_email | follow_up_email | linkedin_message | linkedin_connection | call_script",
   "tone": "professional | conversational | bold",
+  "pain_focus": "string (optional — which pain point to anchor on)",
   "trigger_event": "string (optional — pre-fill from recent_developments)",
   "linkedin_quote": "string (optional — takes priority as opener)",
   "word_limit": 150
+}
+```
+
+#### Deal outcome request body
+
+```json
+{
+  "prospect_id": "string",
+  "outcome": "won | lost | no_response | meeting_booked",
+  "notes": "string (optional)"
 }
 ```
 
@@ -459,6 +572,8 @@ Every agent is wrapped in `try/except`. The pipeline never crashes because one s
 | DuckDuckGo rate-limited | Research results are partial; insights synthesise from LinkedIn + website data |
 | Qdrant unreachable | Embedding skipped; synthesis falls back to direct context; Market Intelligence shows "not enough data" state |
 | Groq 429 / error | Pipeline status set to `failed`; error message stored in SQLite and surfaced in the UI with the real exception detail |
+| Apollo / Hunter unreachable | EnrichmentAgent falls back to email pattern inference (`first.last@domain.com` heuristic) |
+| `JWT_SECRET_KEY` missing | Backend logs a startup warning; auth endpoints return 500 until the key is set |
 
 The frontend surfaces partial results at every stage — people and posts appear as soon as gathering completes, not after synthesis finishes.
 
@@ -468,7 +583,8 @@ The frontend surfaces partial results at every stage — people and posts appear
 
 - [ ] WebSocket push instead of polling — eliminate the 2.5 s latency on stage transitions
 - [ ] CRM export (HubSpot, Salesforce) — one-click prospect push with all intelligence fields mapped
-- [ ] Email send integration (Gmail, Outlook OAuth) — send directly from the email generator panel
+- [ ] Email send integration (Gmail, Outlook OAuth) — send directly from the outreach generator panel
 - [ ] Scheduled re-research — weekly drift detection when a company's signal profile changes significantly
-- [ ] Team workspace — shared pipeline history, prospect assignment, deal tracking
+- [ ] Team workspace — shared pipeline history, prospect assignment, deal tracking across users
+- [ ] ICP calibration dashboard — visualise how deal outcomes correlate with ICP sub-scores over time
 - [ ] Voice briefing — TTS summary of the intelligence report for listening on the way to a call

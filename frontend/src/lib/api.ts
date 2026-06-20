@@ -67,6 +67,12 @@ export interface OutreachEmail {
   keywords_used?: string[];
   personalization_hook?: string;
   subject_lines?: string[];
+  // 5-type outreach fields
+  message_type?: string;
+  channel?: string;
+  voicemail?: string;
+  rationale?: string;
+  persona_angle?: string;
 }
 
 export interface Prospect {
@@ -83,7 +89,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   // Some callers pass paths already prefixed with `/api` (v2 endpoints); others
   // pass bare paths (legacy endpoints). Normalize so we never double the prefix.
   const url = path.startsWith('/api') ? path : `${API_BASE}${path}`;
-  const res = await fetch(url, options);
+  const res = await fetch(url, { credentials: 'include', ...options });
   if (!res.ok) {
     const text = await res.text();
 
@@ -301,6 +307,7 @@ export interface PipelineProspect {
 }
 
 export interface POCPlan {
+  deal_type?: string;
   objective: string;
   approach: string;
   timeline: string;
@@ -376,8 +383,10 @@ export interface EmailV2Request {
   sender_company: string;
   sender_offering: string;
   tone: 'professional' | 'conversational' | 'bold';
+  message_type?: 'cold_email' | 'follow_up_email' | 'linkedin_message' | 'linkedin_connection' | 'call_script';
   trigger_event?: string;
   linkedin_quote?: string;
+  pain_focus?: string;
   word_limit?: number;
 }
 
@@ -667,4 +676,411 @@ export interface CaseStudyPost {
 
 export async function generateCaseStudyPosts(pipelineId: string): Promise<{ posts: CaseStudyPost[]; company_name: string }> {
   return request(`/api/v2/pipeline/${pipelineId}/case-study-posts`, { method: 'POST' });
+}
+
+// ── LinkedIn Intelligence Hub ─────────────────────────────────────────────────
+
+export interface LinkedInTarget {
+  id: string;
+  company_name: string;
+  linkedin_url?: string;
+  website_url?: string;
+  created_at: string;
+}
+
+export interface FetchedPost {
+  id: string;
+  source_type: 'own' | 'target';
+  company_name: string;
+  title?: string;
+  content?: string;
+  published_date?: string;
+  post_url?: string;
+  fetched_at: string;
+}
+
+export interface PostIdea {
+  id: string;
+  topic: string;
+  angle: string;
+  suggested_format: string;
+  rationale: string;
+  hook?: string;
+  status: 'idea' | 'drafting' | 'drafted';
+  draft_content?: string;
+  created_at: string;
+}
+
+export interface HookEntry {
+  pattern: 'question' | 'stat' | 'story' | 'contrarian' | 'bold_claim';
+  hook: string;
+  company: string;
+  why: string;
+}
+
+export interface LinkedInAnalysis {
+  timeline_summary: string;
+  own_cadence?: string;
+  content_themes: string[];
+  competitor_angles: string[];
+  content_gaps: string[];
+  best_day_guess?: string;
+  hook_swipe_file: HookEntry[];
+  post_ideas: PostIdea[];
+  fetched_posts?: FetchedPost[];
+  _fetched_at?: string;
+  error?: string | null;
+}
+
+export interface PostScore {
+  scores: {
+    hook_strength: number;
+    specificity: number;
+    readability: number;
+    cta_clarity: number;
+    length_fit: number;
+  };
+  overall: number;
+  suggestions: string[];
+  verdict: 'ready_to_post' | 'needs_work' | 'strong_post';
+}
+
+export interface ThreadPart {
+  part: number;
+  content: string;
+  char_count: number;
+}
+
+export interface ThreadResult {
+  thread: ThreadPart[];
+  total_parts: number;
+}
+
+export interface FirstComment {
+  comment: string;
+  rationale: string;
+}
+
+export interface RemixResult {
+  remixed_content: string;
+  format_kept: string;
+  what_changed: string;
+}
+
+export async function addLinkedInTarget(data: { company_name: string; linkedin_url?: string; website_url?: string }): Promise<{ id: string; ok: boolean }> {
+  return request('/api/v2/linkedin/targets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listLinkedInTargets(): Promise<LinkedInTarget[]> {
+  return request('/api/v2/linkedin/targets');
+}
+
+export async function deleteLinkedInTarget(id: string): Promise<void> {
+  await request(`/api/v2/linkedin/targets/${id}`, { method: 'DELETE' });
+}
+
+export async function fetchAndAnalyzeLinkedIn(force = false): Promise<{ analysis_id: string | null; fetched_count: number; analysis: LinkedInAnalysis; fetched_posts: FetchedPost[]; skipped?: boolean; age_minutes?: number }> {
+  return request('/api/v2/linkedin/fetch-analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
+  });
+}
+
+export async function getLinkedInAnalysis(): Promise<LinkedInAnalysis | null> {
+  return request('/api/v2/linkedin/analysis');
+}
+
+export async function listLinkedInIdeas(): Promise<PostIdea[]> {
+  return request('/api/v2/linkedin/ideas');
+}
+
+export async function startIdeaDraft(ideaId: string): Promise<{ content: string }> {
+  return request(`/api/v2/linkedin/ideas/${ideaId}/draft/start`, { method: 'POST' });
+}
+
+export async function refineIdeaDraft(
+  ideaId: string,
+  data: { message: string; current_content: string; history: { role: string; content: string }[] }
+): Promise<{ content: string; history: { role: string; content: string }[] }> {
+  return request(`/api/v2/linkedin/ideas/${ideaId}/draft/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function publishIdeaAsPost(ideaId: string): Promise<{ post_id: string }> {
+  return request(`/api/v2/linkedin/ideas/${ideaId}/publish`, { method: 'POST' });
+}
+
+export async function scoreLinkedInPost(content: string): Promise<PostScore> {
+  return request('/api/v2/linkedin/score-post', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function buildLinkedInThread(content: string): Promise<ThreadResult> {
+  return request('/api/v2/linkedin/build-thread', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function generateFirstComment(postContent: string): Promise<FirstComment> {
+  return request('/api/v2/linkedin/first-comment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ post_content: postContent }),
+  });
+}
+
+export async function remixCompetitorPost(original_content: string, company_name: string): Promise<RemixResult> {
+  return request('/api/v2/linkedin/remix-post', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ original_content, company_name }),
+  });
+}
+
+export interface LinkedInAnalytics {
+  total_posts: number;
+  published: number;
+  selected: number;
+  this_month_generated: number;
+  this_month_published: number;
+  total_ideas: number;
+  drafted_ideas: number;
+  targets_tracked: number;
+  scheduled_posts: number;
+}
+
+export interface ScheduledPost {
+  id: string;
+  content: string;
+  char_count: number;
+  status: string;
+  planned_date: string;
+  strategy?: string;
+  trend_cluster?: string;
+  created_at: string;
+}
+
+export interface ContentBrief {
+  brief: string;
+  generated_at: string;
+  char_count: number;
+}
+
+export async function getLinkedInAnalytics(): Promise<LinkedInAnalytics> {
+  return request('/api/v2/linkedin/analytics');
+}
+
+export async function getScheduledPosts(): Promise<ScheduledPost[]> {
+  return request('/api/v2/linkedin/scheduled');
+}
+
+export async function updateLinkedInPost(postId: string, data: { planned_date?: string; post_notes?: string; status?: string }): Promise<{ ok: boolean }> {
+  return request(`/api/v2/linkedin/posts/${postId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function exportContentBrief(): Promise<ContentBrief> {
+  return request('/api/v2/linkedin/export-brief');
+}
+
+// ── Contacts DB ───────────────────────────────────────────────────────────────
+
+export interface ContactWithContext extends PipelineProspect {
+  company_name: string;
+  pipeline_status: string;
+  company_url?: string;
+  pipeline_created_at?: string;
+  engagement_score?: number;
+  industry?: string;
+}
+
+export async function getAllContacts(): Promise<ContactWithContext[]> {
+  return request('/api/v2/contacts');
+}
+
+export async function updateContactStatus(prospectId: string, status: string): Promise<{ ok: boolean }> {
+  return request(`/api/v2/contacts/${prospectId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+}
+
+// ── Outreach Tracker ──────────────────────────────────────────────────────────
+
+export interface EmailWithContext extends OutreachEmail {
+  prospect_name?: string;
+  prospect_title?: string;
+  company_name?: string;
+  prospect_status?: string;
+  sent_at?: string;
+  replied_at?: string;
+  email_notes?: string;
+  pipeline_id: string;
+}
+
+export async function getAllOutreach(): Promise<EmailWithContext[]> {
+  return request('/api/v2/outreach');
+}
+
+export async function updateOutreachTracking(emailId: string, data: { sent_at?: string; replied_at?: string; email_notes?: string }): Promise<{ ok: boolean }> {
+  return request(`/api/v2/outreach/${emailId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// ── BD Playbook ───────────────────────────────────────────────────────────────
+
+export interface BattleCard {
+  industry: string;
+  companies: string[];
+  key_pain_points: string[];
+  objections: { objection: string; response: string }[];
+  talk_tracks: string[];
+  winning_angle: string;
+}
+
+export interface PlaybookData {
+  battle_cards: BattleCard[];
+  total_companies: number;
+  generated_at: string;
+  message?: string;
+}
+
+export async function getPlaybook(): Promise<PlaybookData> {
+  return request('/api/v2/playbook');
+}
+
+// ── Morning Brief ─────────────────────────────────────────────────────────────
+
+export interface HotProspect {
+  name: string;
+  company: string;
+  score: number;
+  reason: string;
+}
+
+export interface PipelineHealthItem {
+  label: string;
+  value: string | number;
+  status: 'good' | 'warning' | 'neutral';
+}
+
+export interface RecommendedAction {
+  priority: 'high' | 'medium' | 'low';
+  action: string;
+  company?: string | null;
+}
+
+export interface BriefData {
+  date: string;
+  executive_summary: string;
+  hot_prospects: HotProspect[];
+  pipeline_health: PipelineHealthItem[];
+  recommended_actions: RecommendedAction[];
+  linkedin_tip: string;
+  generated_at: string;
+}
+
+export async function getMorningBrief(): Promise<BriefData> {
+  return request('/api/v2/brief');
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  full_name: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export async function registerUser(data: RegisterRequest): Promise<User> {
+  return request('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function loginUser(data: LoginRequest): Promise<User> {
+  return request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function logoutUser(): Promise<void> {
+  await request('/api/auth/logout', { method: 'POST' });
+}
+
+export async function getCurrentUser(): Promise<User> {
+  return request('/api/auth/me');
+}
+
+// ── Deal Outcomes ─────────────────────────────────────────────────────────────
+
+export interface DealOutcomeRequest {
+  outcome: 'won' | 'lost' | 'dead';
+  actual_deal_size?: string;
+  loss_reason?: string;
+  notes?: string;
+}
+
+export interface ICPCalibrationBand {
+  band: string;
+  total: number;
+  won: number;
+  lost: number;
+  win_rate: number | null;
+}
+
+export interface ICPCalibration {
+  bands: ICPCalibrationBand[];
+  total_deals: number;
+  note: string;
+}
+
+export async function recordDealOutcome(
+  pipelineId: string,
+  data: DealOutcomeRequest
+): Promise<{ id: string; ok: boolean }> {
+  return request(`/api/v2/pipeline/${pipelineId}/outcome`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getICPCalibration(): Promise<ICPCalibration> {
+  return request('/api/v2/icp-calibration');
 }

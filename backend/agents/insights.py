@@ -30,7 +30,6 @@ _ICP_FACTORS = (
 
 
 def _coerce_score(value, default: int = 0) -> int:
-    """Coerce an LLM-returned score into an int clamped to 0-100."""
     try:
         n = int(round(float(value)))
     except (TypeError, ValueError):
@@ -39,7 +38,6 @@ def _coerce_score(value, default: int = 0) -> int:
 
 
 def _as_str_list(value) -> list:
-    """Coerce a value into a list of non-empty strings."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -50,11 +48,10 @@ def _as_str_list(value) -> list:
 
 
 def _normalize_intelligence(intelligence: dict) -> dict:
-    """Sanitize off-schema LLM output so the frontend and embeddings never break."""
     if not isinstance(intelligence, dict):
         intelligence = {}
 
-    # pain_points must always be a list of well-formed objects
+    # pain_points — always a list of well-formed objects
     raw_pains = intelligence.get("pain_points")
     pains = []
     for p in raw_pains if isinstance(raw_pains, list) else []:
@@ -75,7 +72,7 @@ def _normalize_intelligence(intelligence: dict) -> dict:
             })
     intelligence["pain_points"] = pains
 
-    # tech_stack must always have the three array buckets
+    # tech_stack — three array buckets
     raw_tech = intelligence.get("tech_stack")
     raw_tech = raw_tech if isinstance(raw_tech, dict) else {}
     intelligence["tech_stack"] = {
@@ -84,7 +81,7 @@ def _normalize_intelligence(intelligence: dict) -> dict:
         "gaps": _as_str_list(raw_tech.get("gaps")),
     }
 
-    # icp_score: overall + every breakdown factor coerced to a number
+    # icp_score — coerce all factors
     raw_icp = intelligence.get("icp_score")
     raw_icp = raw_icp if isinstance(raw_icp, dict) else {}
     raw_breakdown = raw_icp.get("breakdown")
@@ -103,6 +100,17 @@ def _normalize_intelligence(intelligence: dict) -> dict:
         "best_entry_point": str(raw_icp.get("best_entry_point") or ""),
     }
 
+    # urgency_trigger — normalize to a well-formed object
+    raw_urgency = intelligence.get("urgency_trigger")
+    if isinstance(raw_urgency, dict):
+        intelligence["urgency_trigger"] = {
+            "signal": str(raw_urgency.get("signal") or ""),
+            "window": str(raw_urgency.get("window") or ""),
+            "angle": str(raw_urgency.get("angle") or ""),
+        }
+    else:
+        intelligence["urgency_trigger"] = {"signal": "", "window": "", "angle": ""}
+
     return intelligence
 
 
@@ -113,10 +121,10 @@ class InsightsAgent:
     def run(self, company_name: str, website_data: dict, linkedin_data: dict,
             keywords: dict, research_results: dict, user_description: str,
             company_profile: dict | None = None, target_context: dict | None = None,
-            rag_context: str | None = None) -> dict:
+            rag_context: str | None = None,
+            crawl_data: dict | None = None) -> dict:
+
         if rag_context:
-            # RAG-grounded: retrieved chunks are the primary evidence, but always
-            # include the people list explicitly so prospect identification works.
             context_parts = [f"RETRIEVED EVIDENCE (most relevant chunks across all sources):\n{rag_context}"]
             for p in linkedin_data.get("people", []) + research_results.get("people", []):
                 context_parts.append(f"PERSON FOUND: {p.get('name','')} - {p.get('title','')}")
@@ -131,14 +139,16 @@ class InsightsAgent:
             for r in research_results.get("results", [])[:8]:
                 context_parts.append(f"[{r['angle'].upper()}] {r['title']}: {r['snippet']}")
             context_parts.append(f"KEYWORDS: {json.dumps(keywords)}")
-        context = "\n\n".join(context_parts)[:6000]
 
-        # Warn downstream when context is very thin — prevents hallucination
-        data_quality = "rich" if len(context) > 1500 else ("sparse" if len(context) > 400 else "very sparse")
-        if data_quality != "rich":
-            context += f"\n\nDATA QUALITY WARNING: Context is {data_quality} ({len(context)} chars). " \
-                       "Score ICP conservatively. Use low confidence on all pain points. " \
-                       "State 'Unknown' for any field not supported by evidence."
+        # Always inject crawl findings for competitive/news context even in RAG mode
+        if crawl_data:
+            for finding in (crawl_data.get("findings") or [])[:12]:
+                stype = finding.get("source_type", "web")
+                context_parts.append(
+                    f"[CRAWL/{stype.upper()}] {finding.get('title','')}: {finding.get('snippet','')[:300]}"
+                )
+
+        context = "\n\n".join(context_parts)[:6500]
 
         target_context = target_context or {}
         target_block = ""
@@ -150,109 +160,104 @@ class InsightsAgent:
             target_block += f"\nTARGET DEAL SIZE BAND: {target_context['deal_size']}"
 
         today = datetime.now().strftime("%Y-%m-%d")
+        prompt = f"""You are a world-class BD strategist for an IT services / software vendor. Synthesize the data below into a structured, EVIDENCE-FIRST intelligence report. Every pain point MUST be anchored to concrete evidence from the gathered data — never invent facts. If evidence is weak, lower the confidence. Identify specific prospects (people to pitch to).
 
-        system = (
-            "You are a world-class B2B intelligence analyst and BD strategist. "
-            "You synthesize raw, imperfect scraped data into an evidence-first intelligence report. "
-            "Your cardinal rule: every pain point, every claim, every score must be traceable to "
-            "something in the provided data. If the data is thin, you say so explicitly through "
-            "lower confidence scores and hedged language — you never hallucinate specifics. "
-            "ICP scores must reflect the actual fit between the target company and the seller's "
-            "profile, not aspirational numbers. A score of 50 is honest; 95 is a red flag."
-        )
+TODAY'S DATE: {today} — use this to judge recency of information and events.
 
-        user = f"""Synthesize the gathered data below into a structured BD intelligence report.
-
-ANALYSIS DATE: {today} — judge recency of events against this date.
-TARGET COMPANY: {company_name}
-SELLER OFFERING: {user_description}{target_block}
+COMPANY: {company_name}
+USER'S OFFERING (free text): {user_description}{target_block}
 
 {_profile_block(company_profile)}
 
 GATHERED DATA:
 {context}
 
-Return ONLY this JSON — no markdown, no commentary:
+SPECIFICITY RULES — outputs that break these rules are useless to a BD rep and will be rejected:
+1. BANNED PHRASES — never output any of these: "end-to-end solutions", "streamline operations", "business growth and resilience", "digital transformation", "proven track record", "extensive experience", "leverage our expertise", "best-in-class", "seamlessly", "holistic", "synergy", "empower", "state-of-the-art", "cutting-edge", "comprehensive solutions", "tailored solutions", "drive growth"
+2. `pain_points[].title` — must name the SPECIFIC problem, not a category. BAD: "Technology Challenges". GOOD: "12 React roles unfilled 78+ days — delivery backlog building before Q3 deadline"
+3. `pain_points[].evidence[]` — quote the ACTUAL signal verbatim (headline text, job count, post text, stat). BAD: "Company announced layoffs". GOOD: "LinkedIn headline: 'Acrisure to Cut 2,250 Employees, Citing Advances in Technology and AI'"
+4. `pain_points[].opportunity` — MUST follow this format: "[specific service from user profile] + [concrete outcome tied to this company's evidence]". BAD: "Our digital solutions can help them improve efficiency". GOOD: "Staff augmentation with 3 React engineers fills the 12-role backlog before the Q3 deadline, based on their 78-day open req pattern"
+5. `pain_points[].pitch_angle` — must use {company_name}'s name AND a specific evidence signal. Must be copy-paste ready for an email opener.
+6. `urgency_trigger.angle` — must be a complete, ready-to-send one-line opener for an email or call. e.g. "Saw {company_name} cut 2,250 roles last quarter — suggests you're accelerating automation faster than your remaining team can absorb"
+7. `icp_score.recommended_action` — must state the action (PRIORITIZE/NURTURE/DEPRIORITIZE) AND explain which scores drove it. e.g. "PRIORITIZE — pain_service_fit 88 and urgency signal is high, but budget_probability 54 means lead with a scoped audit rather than full engagement"
+8. `icp_score.best_entry_point` — name the specific engagement type + service. BAD: "data analytics". GOOD: "2-week data quality audit scoped to their claims processing pipeline"
+
+Return ONLY this JSON:
 {{
   "company_overview": {{
-    "description": "2–3 sentences grounded in what the data actually shows",
-    "industry": "Primary industry vertical",
-    "size": "Headcount or ARR estimate — say 'Unknown' if not in data",
-    "founded": "Year or decade — say 'Unknown' if not in data",
-    "headquarters": "City, Country — say 'Unknown' if not in data"
+    "description": "2-3 sentence summary",
+    "industry": "Primary industry",
+    "size": "Estimated headcount/ARR",
+    "founded": "Year or decade",
+    "headquarters": "City, Country"
   }},
-  "business_model": "How they make money — be specific, avoid 'they provide solutions'",
+  "business_model": "How they make money",
   "tech_stack": {{
-    "current": ["technologies/platforms they demonstrably use now"],
-    "hiring": ["technologies implied by job postings or hiring signals — empty if none found"],
-    "gaps": ["capabilities the data suggests they lack that the seller could address"]
+    "current": ["technologies/platforms they appear to use now"],
+    "hiring": ["technologies implied by hiring / job signals, or empty"],
+    "gaps": ["capabilities they appear to lack that the user could provide"]
   }},
   "pain_points": [
     {{
-      "title": "Short, specific pain point name",
-      "severity": "high | medium | low",
-      "evidence": ["Direct quote or paraphrase from the gathered data that supports this pain"],
-      "inference": "What the evidence implies about underlying business pressure",
-      "opportunity": "How the seller's specific services address this — not generic",
-      "pitch_angle": "One line: how to lead with this pain in a cold email or call opener",
-      "confidence": "high | medium | low — based on evidence quality, not wishful thinking"
+      "title": "Specific problem name using concrete evidence — NOT a category label",
+      "severity": "high|medium|low",
+      "evidence": ["VERBATIM signal from gathered data — quote the exact headline, job count, or post text"],
+      "inference": "what this evidence specifically implies about {company_name}'s current situation",
+      "opportunity": "[specific service from user profile] addresses [specific evidence signal] — include a concrete number or outcome",
+      "pitch_angle": "{company_name} + evidence signal as a copy-paste ready email opener",
+      "confidence": "high|medium|low"
     }}
   ],
-  "bd_opportunities": [
-    "Specific, time-anchored opportunity (e.g. 'Expanding into APAC — needs localisation tooling')"
-  ],
-  "recent_developments": [
-    "Recent event with timeframe — only include if supported by gathered data"
-  ],
+  "bd_opportunities": ["specific opportunity with evidence basis", "second opportunity"],
+  "recent_developments": ["recent event with timeframe and source"],
   "competitive_landscape": {{
-    "main_competitors": ["name1", "name2"],
-    "market_position": "leader | challenger | niche | unknown",
-    "differentiators": "What sets them apart — or 'unclear from available data'"
+    "main_competitors": ["only competitors found in gathered data — do NOT invent"],
+    "market_position": "leader/challenger/niche — based on gathered evidence only",
+    "differentiators": "what sets them apart based on gathered evidence"
+  }},
+  "urgency_trigger": {{
+    "signal": "The single most time-sensitive signal from the data. Quote the source. Leave blank if nothing concrete found.",
+    "window": "Why this quarter or next 90 days matters — based on the signal. e.g. 'New CTO hired 6 weeks ago — still evaluating vendors'.",
+    "angle": "Complete one-line opener ready to paste into an email — uses company name + specific signal"
   }},
   "engagement_score": {{
-    "score": "<integer 1-100 — weight: pain fit 40%, timing 30%, access 30%>",
-    "reasoning": "2–3 sentences explaining the score with reference to specific signals"
+    "score": <integer 1-100>,
+    "reasoning": "specific reasons referencing the evidence signals"
   }},
   "icp_score": {{
-    "overall": "<integer 1-100 — average of breakdown, not inflated>",
+    "overall": <integer 1-100>,
     "breakdown": {{
-      "industry_fit": "<1-100>",
-      "tech_alignment": "<1-100>",
-      "company_size": "<1-100>",
-      "pain_service_fit": "<1-100>",
-      "budget_probability": "<1-100>",
-      "decision_readiness": "<1-100>"
+      "industry_fit": <1-100>,
+      "tech_alignment": <1-100>,
+      "company_size": <1-100>,
+      "pain_service_fit": <1-100>,
+      "budget_probability": <1-100>,
+      "decision_readiness": <1-100>
     }},
-    "recommended_action": "PRIORITIZE | NURTURE | DEPRIORITIZE — one clause of specific reasoning",
-    "suggested_deal_size": "e.g. '$100K–$300K / year' or 'Unknown'",
-    "best_entry_point": "The fastest-yes service angle or entry point for this specific company"
+    "recommended_action": "PRIORITIZE/NURTURE/DEPRIORITIZE — explain which scores drove the decision and what BD action follows",
+    "suggested_deal_size": "e.g. $300K-$600K / year",
+    "best_entry_point": "specific engagement type + named service based on their situation"
   }},
-  "recommended_approach": "2–3 sentences of specific BD strategy — not generic advice",
-  "key_keywords": ["6 keywords that best represent this company's context for RAG retrieval"],
+  "recommended_approach": "2-3 sentence BD strategy specific to {company_name}'s situation",
+  "key_keywords": ["top 6 keywords representing this company's specific context"],
   "prospects": [
     {{
       "id": "p1",
-      "name": "Full Name if found — otherwise describe the role ('Head of Engineering (name unknown)')",
-      "title": "Job title",
-      "relevance": "Why specifically this person for the seller's offering",
-      "contact_angle": "Specific, personalised angle to lead with — reference a real signal",
-      "confidence": "high | medium | low"
+      "name": "Full Name or role description if name unknown",
+      "title": "Job Title",
+      "relevance": "why this specific person for BD at {company_name}",
+      "contact_angle": "specific angle tied to their role AND the evidence — not generic",
+      "confidence": "high"
     }}
   ]
 }}
-
-Provide exactly 3 pain points and 2–4 prospects. Score ICP factors against the seller's actual profile, not against an ideal customer in the abstract. If data is sparse on any dimension, score conservatively."""
+Provide 3 pain points (each grounded in evidence) and 2-4 prospects. Score ICP factors honestly based on fit between the target and the user's profile. For competitive_landscape, ONLY name competitors mentioned in the gathered data — if none found, return an empty list."""
 
         try:
             msg = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                max_tokens=4000,
-                temperature=0.2,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                max_tokens=3800,
+                messages=[{"role": "user", "content": prompt}],
             )
             intelligence = extract_json(msg.choices[0].message.content)
         except Exception as e:
@@ -261,13 +266,11 @@ Provide exactly 3 pain points and 2–4 prospects. Score ICP factors against the
 
         intelligence = _normalize_intelligence(intelligence)
 
-        # Attach real sources
         sources = [{"title": r["title"], "url": r["url"]}
                    for r in research_results.get("results", []) if r.get("url")]
         intelligence["sources"] = sources[:8]
         intelligence["grounded"] = len(sources) > 0
 
-        # Ensure prospects have unique IDs
         for i, p in enumerate(intelligence.get("prospects", [])):
             if not p.get("id") or p["id"] == f"p{i+1}":
                 p["id"] = f"p{i+1}"
