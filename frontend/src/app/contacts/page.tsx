@@ -2,60 +2,34 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import { Search, Users, Plus } from 'lucide-react';
 import { getAllContacts, updateContactStatus, ContactWithContext } from '@/lib/api';
-
-const CONFIDENCE_STYLES: Record<string, string> = {
-  high:   'bg-emerald-100 text-emerald-700',
-  medium: 'bg-amber-100 text-amber-700',
-  low:    'bg-red-100 text-red-700',
-};
-
-const STATUS_STYLES: Record<string, string> = {
-  new:            'bg-slate-100 text-slate-600',
-  contacted:      'bg-blue-100 text-blue-700',
-  in_conversation:'bg-indigo-100 text-indigo-700',
-  won:            'bg-emerald-100 text-emerald-700',
-  lost:           'bg-red-100 text-red-700',
-  deprioritized:  'bg-slate-100 text-slate-400',
-};
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Card } from '@/components/ui/card';
 
 const STATUS_OPTIONS = ['new', 'contacted', 'in_conversation', 'won', 'lost', 'deprioritized'];
 
 const PIPELINE_STATUS_DOT: Record<string, string> = {
-  complete: 'bg-emerald-500',
-  failed:   'bg-red-400',
-  default:  'bg-amber-400',
+  complete: 'bg-success',
+  failed: 'bg-danger',
+  default: 'bg-warning',
 };
 
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`bg-slate-100 rounded animate-pulse ${className}`} />;
-}
-
-function StatusDropdown({ current, onChange }: { current: string; onChange: (s: string) => void }) {
-  return (
-    <select
-      value={current || 'new'}
-      onChange={e => onChange(e.target.value)}
-      className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-700 cursor-pointer"
-    >
-      {STATUS_OPTIONS.map(s => (
-        <option key={s} value={s}>{s.replace('_', ' ')}</option>
-      ))}
-    </select>
-  );
-}
-
 function ScoreRing({ score }: { score: number }) {
-  const r = 12, c = 2 * Math.PI * r;
+  const r = 14, c = 2 * Math.PI * r;
   const fill = (score / 100) * c;
   const color = score >= 70 ? '#10b981' : score >= 45 ? '#f59e0b' : '#ef4444';
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" className="flex-shrink-0">
-      <circle cx="16" cy="16" r={r} fill="none" stroke="#e2e8f0" strokeWidth="3" />
-      <circle cx="16" cy="16" r={r} fill="none" stroke={color} strokeWidth="3"
+    <svg width="36" height="36" viewBox="0 0 36 36" className="flex-shrink-0">
+      <circle cx="18" cy="18" r={r} fill="none" stroke="#e2e8f0" strokeWidth="3" />
+      <circle cx="18" cy="18" r={r} fill="none" stroke={color} strokeWidth="3"
         strokeDasharray={`${fill} ${c}`} strokeLinecap="round"
-        transform="rotate(-90 16 16)" />
-      <text x="16" y="20" textAnchor="middle" fontSize="9" fontWeight="700" fill={color}>{score}</text>
+        transform="rotate(-90 18 18)" />
+      <text x="18" y="22" textAnchor="middle" fontSize="9" fontWeight="700" fill={color}>{score}</text>
     </svg>
   );
 }
@@ -110,83 +84,81 @@ export default function ContactsPage() {
     }
   }
 
+  const hasFilters = !!(search || filterConf || filterStatus || filterIndustry);
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-8 py-5">
+      <div className="bg-card border-b border-border px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Contacts</h1>
-            <p className="text-sm text-slate-500 mt-0.5">All identified prospects across every pipeline</p>
+            <h1 className="text-xl font-bold text-foreground">Contacts</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">All identified prospects across every pipeline</p>
           </div>
-          <Link href="/analyze"
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-            + New Analysis
-          </Link>
+          <Button asChild>
+            <Link href="/analyze"><Plus className="w-4 h-4" />New Analysis</Link>
+          </Button>
         </div>
 
         {/* KPI strip */}
         <div className="grid grid-cols-4 gap-4 mt-5">
           {[
-            { label: 'Total Contacts', value: stats.total, color: 'text-slate-900' },
-            { label: 'High Confidence', value: stats.high, color: 'text-emerald-600' },
-            { label: 'Active Conversations', value: stats.active, color: 'text-indigo-600' },
-            { label: 'Won', value: stats.won, color: 'text-emerald-600' },
+            { label: 'Total Contacts', value: stats.total, className: 'text-foreground' },
+            { label: 'High Confidence', value: stats.high, className: 'text-success' },
+            { label: 'Active Conversations', value: stats.active, className: 'text-primary' },
+            { label: 'Won', value: stats.won, className: 'text-success' },
           ].map(s => (
-            <div key={s.label} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-              <div className={`text-2xl font-bold ${s.color}`}>{loading ? '—' : s.value}</div>
-              <div className="text-xs text-slate-500 mt-0.5">{s.label}</div>
+            <div key={s.label} className="bg-background border border-border rounded-xl px-4 py-3">
+              <div className={`text-2xl font-bold ${s.className}`}>{loading ? '—' : s.value}</div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
       </div>
 
       <div className="px-8 py-6">
-        {/* Filters */}
+        {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="relative flex-1 min-w-52">
-            <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, company, title..."
-              className="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
-          </div>
-          <select value={filterConf} onChange={e => setFilterConf(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-700">
+          <Input
+            className="flex-1 min-w-52"
+            icon={<Search className="w-4 h-4" />}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, company, title..."
+          />
+          <Select value={filterConf} onChange={e => setFilterConf(e.target.value)}>
             <option value="">All Confidence</option>
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
-          </select>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-700">
+          </Select>
+          <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
             <option value="">All Statuses</option>
             {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-          </select>
+          </Select>
           {industries.length > 0 && (
-            <select value={filterIndustry} onChange={e => setFilterIndustry(e.target.value)}
-              className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-slate-700">
+            <Select value={filterIndustry} onChange={e => setFilterIndustry(e.target.value)}>
               <option value="">All Industries</option>
               {industries.map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
+            </Select>
           )}
-          {(search || filterConf || filterStatus || filterIndustry) && (
-            <button onClick={() => { setSearch(''); setFilterConf(''); setFilterStatus(''); setFilterIndustry(''); }}
-              className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">
+          {hasFilters && (
+            <Button variant="ghost" size="sm"
+              onClick={() => { setSearch(''); setFilterConf(''); setFilterStatus(''); setFilterIndustry(''); }}>
               Clear filters
-            </button>
+            </Button>
           )}
-          <span className="text-xs text-slate-400 ml-auto">{filtered.length} contact{filtered.length !== 1 ? 's' : ''}</span>
+          <span className="text-xs text-muted-foreground ml-auto">{filtered.length} contact{filtered.length !== 1 ? 's' : ''}</span>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5">{error}</div>
+          <div className="bg-danger-subtle border border-danger/20 text-danger text-sm rounded-xl px-4 py-3 mb-5">{error}</div>
         )}
 
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-xl border border-slate-200 p-4">
+              <Card key={i} className="p-4">
                 <div className="flex items-center gap-4">
                   <Skeleton className="w-8 h-8 rounded-full" />
                   <div className="flex-1 space-y-2">
@@ -196,87 +168,92 @@ export default function ContactsPage() {
                   <Skeleton className="h-6 w-16 rounded-full" />
                   <Skeleton className="h-8 w-28 rounded-lg" />
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="bg-white rounded-xl border border-slate-200 p-16 text-center">
-            <div className="text-3xl mb-3">👥</div>
-            <div className="text-slate-700 font-semibold mb-1">No contacts yet</div>
-            <p className="text-slate-500 text-sm mb-4">Run company analyses to identify prospects</p>
-            <Link href="/analyze" className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors inline-block">
-              Start Analysis
-            </Link>
-          </div>
+          <Card className="p-16 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+              <Users className="w-7 h-7 text-primary" />
+            </div>
+            <div className="text-foreground font-semibold mb-1">No contacts yet</div>
+            <p className="text-muted-foreground text-sm mb-4">Run company analyses to identify prospects</p>
+            <Button asChild>
+              <Link href="/analyze">Start Analysis</Link>
+            </Button>
+          </Card>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <Card className="overflow-hidden">
+            <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="text-left px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Prospect</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Company</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Confidence</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Score</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Contact Angle</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Status</th>
-                  <th className="px-4 py-3" />
+                <tr className="border-b border-border bg-muted/50">
+                  {['Prospect', 'Company', 'Confidence', 'Score', 'Contact Angle', 'Status', ''].map((h, idx) => (
+                    <th key={idx} className="text-left px-5 py-3">
+                      {h && <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{h}</p>}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {filtered.map(contact => {
                   const dotColor = PIPELINE_STATUS_DOT[contact.pipeline_status] ?? PIPELINE_STATUS_DOT.default;
                   return (
-                    <tr key={contact.id} className={`hover:bg-slate-50 transition-colors ${updatingId === contact.id ? 'opacity-50' : ''}`}>
+                    <tr key={contact.id} className={`hover:bg-muted/30 transition-colors ${updatingId === contact.id ? 'opacity-50' : ''}`}>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center flex-shrink-0">
-                            <span className="text-indigo-700 text-xs font-bold">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center flex-shrink-0">
+                            <span className="text-primary text-xs font-bold">
                               {(contact.name || '?').charAt(0).toUpperCase()}
                             </span>
                           </div>
                           <div>
-                            <div className="font-semibold text-slate-900">{contact.name || 'Unknown'}</div>
-                            <div className="text-slate-500 text-xs">{contact.title || '—'}</div>
+                            <div className="font-semibold text-foreground">{contact.name || 'Unknown'}</div>
+                            <div className="text-muted-foreground text-xs">{contact.title || '—'}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
-                          <span className="font-medium text-slate-800">{contact.company_name}</span>
+                          <span className="font-medium text-foreground">{contact.company_name}</span>
                         </div>
-                        {contact.industry && <div className="text-xs text-slate-400 mt-0.5">{contact.industry}</div>}
+                        {contact.industry && <div className="text-xs text-muted-foreground mt-0.5">{contact.industry}</div>}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${CONFIDENCE_STYLES[contact.confidence] ?? CONFIDENCE_STYLES.medium}`}>
+                        <Badge variant={(contact.confidence as 'high' | 'medium' | 'low') ?? 'medium'}>
                           {contact.confidence}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3.5">
-                        {contact.engagement_score ? <ScoreRing score={contact.engagement_score} /> : <span className="text-slate-300">—</span>}
+                        {contact.engagement_score
+                          ? <ScoreRing score={contact.engagement_score} />
+                          : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3.5 max-w-56">
-                        <p className="text-slate-600 text-xs line-clamp-2 italic">{contact.contact_angle || '—'}</p>
+                        <p className="text-muted-foreground text-xs line-clamp-2 italic">{contact.contact_angle || '—'}</p>
                       </td>
                       <td className="px-4 py-3.5">
-                        <StatusDropdown
-                          current={contact.prospect_status || 'new'}
-                          onChange={s => handleStatusChange(contact.id, s)}
-                        />
+                        <Select
+                          value={contact.prospect_status || 'new'}
+                          onChange={e => handleStatusChange(contact.id, e.target.value)}
+                          className="text-xs h-7 py-0"
+                        >
+                          {STATUS_OPTIONS.map(s => (
+                            <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                          ))}
+                        </Select>
                       </td>
                       <td className="px-4 py-3.5">
-                        <Link
-                          href={`/pipeline/${contact.pipeline_id}/prospect/${contact.id}`}
-                          className="text-xs font-medium text-indigo-600 hover:text-indigo-700 whitespace-nowrap">
-                          View →
-                        </Link>
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/pipeline/${contact.pipeline_id}/prospect/${contact.id}`}>View</Link>
+                        </Button>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+          </Card>
         )}
       </div>
     </div>
