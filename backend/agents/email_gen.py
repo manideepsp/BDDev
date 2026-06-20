@@ -1,23 +1,128 @@
 import logging, uuid
 from datetime import datetime
-from utils import extract_json, pain_point_titles
+from utils import extract_json
 
 logger = logging.getLogger(__name__)
 
-TONE_MAP = {
-    "professional": (
-        "formal, polished, executive-to-executive. Calm confidence, zero fluff. "
-        "Reads like a respected peer who values the reader's time."
-    ),
-    "conversational": (
-        "warm and human, like a thoughtful note from one operator to another. "
-        "Contractions, plain words, a touch of personality — never chummy or cute."
-    ),
-    "bold": (
-        "direct and provocative. Open with a sharp, specific insight or a number "
-        "that reframes their situation. Confident, never arrogant; earns the reply."
-    ),
+_PERSONA_ANGLES = {
+    "cto": ("technical", "Lead with architecture, engineering velocity, and reducing technical debt. Speak the language of their stack. Avoid business-case language — they hate it."),
+    "cio": ("technical", "Lead with architecture, engineering velocity, and reducing technical debt. Speak the language of their stack. Avoid business-case language — they hate it."),
+    "engineering": ("technical", "Lead with architecture, engineering velocity, and reducing technical debt. Speak the language of their stack. Avoid business-case language — they hate it."),
+    "vp eng": ("technical", "Lead with architecture, engineering velocity, and reducing technical debt. Speak the language of their stack. Avoid business-case language — they hate it."),
+    "cfo": ("financial", "Lead with cost of inaction, ROI, and payback period. Quantify everything. Risk reduction > revenue growth for this persona. Be precise with numbers."),
+    "finance": ("financial", "Lead with cost of inaction, ROI, and payback period. Quantify everything. Risk reduction > revenue growth for this persona. Be precise with numbers."),
+    "ceo": ("strategic", "Lead with market position, competitive advantage, and 12-month strategic impact. Connect to their growth narrative. Skip operational detail — go straight to outcomes."),
+    "founder": ("strategic", "Lead with market position, competitive advantage, and 12-month strategic impact. Connect to their growth narrative. Skip operational detail — go straight to outcomes."),
+    "president": ("strategic", "Lead with market position, competitive advantage, and 12-month strategic impact. Connect to their growth narrative. Skip operational detail — go straight to outcomes."),
+    "cro": ("revenue", "Lead with pipeline impact, win rate, and revenue acceleration. They care about deals closed, not tech. Frame everything in revenue terms."),
+    "sales": ("revenue", "Lead with pipeline impact, win rate, and revenue acceleration. They care about deals closed, not tech. Frame everything in revenue terms."),
+    "revenue": ("revenue", "Lead with pipeline impact, win rate, and revenue acceleration. They care about deals closed, not tech. Frame everything in revenue terms."),
+    "coo": ("operational", "Lead with process efficiency, cost reduction, and team capacity. They care about execution — specific workflows, headcount, and turnaround time."),
+    "operations": ("operational", "Lead with process efficiency, cost reduction, and team capacity. They care about execution — specific workflows, headcount, and turnaround time."),
+    "chro": ("people", "Lead with talent retention, hiring velocity, and culture signals. Frame your offering around their people challenges, not their technology."),
+    "hr": ("people", "Lead with talent retention, hiring velocity, and culture signals. Frame your offering around their people challenges, not their technology."),
+    "people": ("people", "Lead with talent retention, hiring velocity, and culture signals. Frame your offering around their people challenges, not their technology."),
+    "cmo": ("marketing", "Lead with market share, brand positioning, and pipeline generation. Connect your offering to their go-to-market motion and growth targets."),
+    "marketing": ("marketing", "Lead with market share, brand positioning, and pipeline generation. Connect your offering to their go-to-market motion and growth targets."),
+    "product": ("product", "Lead with product velocity, user outcomes, and reducing time-to-market. Speak about roadmap risk, technical coupling, and customer impact."),
+    "cpo": ("product", "Lead with product velocity, user outcomes, and reducing time-to-market. Speak about roadmap risk, technical coupling, and customer impact."),
 }
+
+TONE_MAP = {
+    "professional": "formal, polished, executive-to-executive. Calm confidence, zero fluff. Reads like a respected peer who values the reader's time.",
+    "conversational": "warm and human, like a thoughtful note from one operator to another. Contractions, plain words, a touch of personality — never chummy or cute.",
+    "bold": "direct and provocative. Open with a sharp, specific insight or a number that reframes their situation. Confident, never arrogant; earns the reply.",
+}
+
+EMAIL_PLAYBOOK = """\
+COLD EMAIL PLAYBOOK — follow every rule:
+SUBJECT: 3–5 words. Looks like an internal note. Sentence case. No Title Case, no emojis, no ALL CAPS.
+  Spark relevance tied to THEIR world. No "Quick question", no spam words (free, guarantee, offer, deal).
+OPENING LINE: Lead with something specific and true about THEM — a recent hire, launch, post, job opening, or the pain.
+  BANNED openers: "I hope this email finds you well", "My name is...", "I'm reaching out because...",
+  "I came across your company", "Hope you're doing well", "Let me introduce", "Just following up", "Circling back"
+BODY: 50–110 words total. Their world first (70%), your offering second (30%).
+  ONE proof point: a concrete number, a comparable customer, or a specific result.
+  5th–7th grade reading level. Short sentences. Active voice. No jargon. 2–3 short paragraphs.
+CTA: Exactly one, low-friction. e.g. "Worth a quick look?" / "Open to a 2-line breakdown?"
+  Do NOT ask for a 30-minute meeting in a cold email.
+SIGN-OFF: "Best," or "Thanks," then sender name + company.\
+"""
+
+# Per message type: config for prompting and return structure
+MESSAGE_TYPE_CONFIG = {
+    "cold_email": {
+        "channel": "email",
+        "label": "Cold Intro Email",
+        "has_subject": True,
+        "has_voicemail": False,
+        "instructions": (
+            "Generate ONE cold intro email. Follow the EMAIL PLAYBOOK exactly.\n"
+            "Subject: 3-5 words, sentence case, internal-note style.\n"
+            "Body: 60-100 words. Open with the ANCHOR SIGNAL — show you did the research. One proof point. One CTA."
+        ),
+        "json_schema": '{"subject": "3-5 word subject line", "body": "full email body with sign-off", "rationale": "why this specific opener works"}',
+    },
+    "follow_up_email": {
+        "channel": "email",
+        "label": "Follow-up Email",
+        "has_subject": True,
+        "has_voicemail": False,
+        "instructions": (
+            "Generate ONE follow-up email with a COMPLETELY DIFFERENT angle from the cold intro. Not a bump — new signal, new value.\n"
+            "Subject: 3-5 words or Re: style.\n"
+            "Body: 40-60 words MAXIMUM. New angle: different pain point, a proof point, or a customer result.\n"
+            "BANNED: 'Following up', 'Checking in', 'Circling back', 'Just bumping this'."
+        ),
+        "json_schema": '{"subject": "short subject", "body": "follow-up body with sign-off", "rationale": "what new angle this introduces"}',
+    },
+    "linkedin_message": {
+        "channel": "linkedin",
+        "label": "LinkedIn Direct Message",
+        "has_subject": False,
+        "has_voicemail": False,
+        "instructions": (
+            "Generate ONE LinkedIn direct message (300-500 characters).\n"
+            "Specific opener tied to their role, a recent post, or the pain signal. Soft CTA: a question or resource offer.\n"
+            "No subject. Peer-to-peer tone. No pitch dump. Feels human, not automated."
+        ),
+        "json_schema": '{"body": "the LinkedIn message (300-500 chars)", "rationale": "why this approach on LinkedIn"}',
+    },
+    "linkedin_connection": {
+        "channel": "linkedin",
+        "label": "Connection Request",
+        "has_subject": False,
+        "has_voicemail": False,
+        "instructions": (
+            "Generate ONE LinkedIn connection request note (HARD LIMIT: 280 characters).\n"
+            "Give a specific reason to connect: their recent post, a shared professional context, or the pain signal.\n"
+            "BANNED: 'I'd love to connect', 'I came across your profile', 'I'm reaching out'.\n"
+            "No pitch. Something only this person could receive — hyper-specific."
+        ),
+        "json_schema": '{"body": "connection note ≤280 chars", "rationale": "specific reason used to connect"}',
+    },
+    "call_script": {
+        "channel": "phone",
+        "label": "Call Script",
+        "has_subject": False,
+        "has_voicemail": True,
+        "instructions": (
+            "Generate a 30-second cold call opening script AND a 20-second voicemail.\n"
+            "Opening: name + company + one specific reason they'd care (their pain or signal) + low-pressure ask.\n"
+            "Voicemail: name, company, one compelling hook, [YOUR NUMBER] placeholder.\n"
+            "Respectful, specific, not salesy."
+        ),
+        "json_schema": '{"body": "30-second opening script (what to say when they pick up)", "voicemail": "20-second voicemail script", "rationale": "angle and approach used"}',
+    },
+}
+
+
+def _detect_persona(title: str) -> tuple[str, str]:
+    title_lower = title.lower()
+    for keyword, (ptype, instruction) in _PERSONA_ANGLES.items():
+        if keyword in title_lower:
+            return ptype, instruction
+    return "executive", "Lead with business outcomes and strategic value. Keep it concise, specific, and relevant to their role."
 
 
 class EmailGeneratorAgent:
@@ -34,54 +139,53 @@ class EmailGeneratorAgent:
         sender_company: str,
         sender_offering: str,
         tone: str,
+        message_type: str = "cold_email",
         trigger_event: str = "",
         linkedin_quote: str = "",
+        pain_focus: str = "",
         word_limit: int = 150,
         feedback_prefs: dict | None = None,
         brand_voice: dict | None = None,
     ) -> dict:
+        cfg = MESSAGE_TYPE_CONFIG.get(message_type, MESSAGE_TYPE_CONFIG["cold_email"])
         tone_desc = TONE_MAP.get(tone, TONE_MAP["professional"])
-        pains = pain_point_titles(intelligence, limit=2)
-        pain_primary = pains[0] if pains else ""
-        pain_secondary = pains[1] if len(pains) > 1 else ""
+        persona_type, persona_instruction = _detect_persona(prospect.get("title", ""))
 
-        overview = (intelligence.get("company_overview") or {})
-        recents = intelligence.get("recent_developments") or []
-        # Use caller-supplied trigger event first; fall back to first recent development
-        resolved_trigger = trigger_event.strip() or (recents[0] if recents else "")
+        # Pain point context — optionally focused on a specific pain
+        all_pains = intelligence.get("pain_points") or []
+        focused_pain = None
+        if pain_focus:
+            focused_pain = next(
+                (p for p in all_pains if pain_focus.lower() in p.get("title", "").lower()), None
+            )
+        top_pain_obj = focused_pain or (all_pains[0] if all_pains else {})
+        secondary_pain_obj = (all_pains[1] if len(all_pains) > 1 else {}) if not focused_pain else (all_pains[1] if len(all_pains) > 1 else {})
+
+        top_pain = top_pain_obj.get("title", "")
+        pain_evidence = top_pain_obj.get("evidence") or []
+        pain_opportunity = top_pain_obj.get("opportunity", "")
+        secondary_pain = secondary_pain_obj.get("title", "")
+
+        overview = intelligence.get("company_overview") or {}
+        urgency = intelligence.get("urgency_trigger") or {}
+        urgency_angle = urgency.get("angle", "")
+        urgency_signal = urgency.get("signal", "")
+
+        # Anchor signal priority: linkedin_quote > trigger_event > urgency_angle > top pain evidence
+        anchor = (
+            linkedin_quote.strip()
+            or trigger_event.strip()
+            or urgency_angle
+            or (pain_evidence[0] if pain_evidence else top_pain)
+        )
+
+        value_prop = poc_plan.get("value_proposition", "") or sender_offering
+        keywords = intelligence.get("key_keywords") or []
         contact_angle = prospect.get("contact_angle", "")
-        value_prop = poc_plan.get("value_proposition", "")
-        industry = overview.get("industry", "")
 
-        # Build the structured context the prompt template slots into
-        my_company_context = (
-            f"Name: {sender_name}\n"
-            f"Company: {sender_company}\n"
-            f"What we do (value proposition): {sender_offering}"
-        )
+        playbook_block = f"\n{EMAIL_PLAYBOOK}\n" if cfg["channel"] == "email" else ""
 
-        prospect_context = (
-            f"Name: {prospect.get('name', 'the contact')}\n"
-            f"Title: {prospect.get('title', '')}\n"
-            f"Company: {company_name}\n"
-            f"Industry: {industry}\n"
-            f"Primary pain point: {pain_primary}\n"
-            f"Secondary pain point: {pain_secondary}\n"
-            f"Why this person, specifically: {contact_angle}"
-        )
-
-        # Best trigger to anchor the opener on
-        trigger_block = ""
-        if linkedin_quote.strip():
-            trigger_block = f"Use this specific quote from the prospect's LinkedIn/interview as the opening line:\n\"{linkedin_quote.strip()}\""
-        elif resolved_trigger:
-            trigger_block = f"Anchor the opening on this recent trigger event at {company_name}:\n{resolved_trigger}"
-        else:
-            trigger_block = f"Anchor the opening on the primary pain point: {pain_primary}"
-
-        poc_hook = value_prop or poc_plan.get("objective", "")
-
-        # --- Brand Voice: inject from company profile settings ---
+        # Brand voice injection
         brand_voice_block = ""
         if brand_voice:
             bv_lines = []
@@ -101,7 +205,7 @@ class EmailGeneratorAgent:
                     bv_lines.append(f"  Match this style (do NOT copy):\n  ---\n  {bv_example[:400]}\n  ---")
                 brand_voice_block = "\n".join(bv_lines) + "\n\n"
 
-        # --- Memory: inject feedback preferences from past high/low-rated emails ---
+        # Memory / feedback preferences injection
         memory_block = ""
         if feedback_prefs and feedback_prefs.get("total_rated", 0) > 0:
             lines = [f"MEMORY — LEARNED PREFERENCES (from {feedback_prefs['total_rated']} rated emails):"]
@@ -114,90 +218,88 @@ class EmailGeneratorAgent:
                 lines.append(f"  ---\n  {feedback_prefs['high_rated_bodies'][0]}\n  ---")
             memory_block = "\n".join(lines) + "\n\n"
 
-        prompt = f"""Act as an expert B2B sales copywriter. Write a concise, value-driven cold email to a prospect.
+        prompt = f"""You are an elite B2B outreach specialist. Generate ONE piece of outreach — make it the best version of its type.
 {brand_voice_block}{memory_block}
-MY COMPANY CONTEXT:
-{my_company_context}
+TYPE: {cfg['label']}
+TASK: {cfg['instructions']}
 
-TARGET PROSPECT:
-{prospect_context}
+WHO THIS IS FOR:
+- Recipient: {prospect.get('name', 'the contact')} — {prospect.get('title', '')} at {company_name}
+- About {company_name}: {overview.get('description', '')}
+- Why this person specifically: {contact_angle}
+- Persona: {persona_type.upper()} — {persona_instruction}
 
-PERSONALISATION SIGNAL (use this to open — do NOT ignore it):
-{trigger_block}
+ANCHOR SIGNAL (this is the reason you're reaching out RIGHT NOW — use it as the opener):
+{anchor}
 
-POC HOOK (weave into the body naturally):
-{poc_hook}
+PAIN CONTEXT (primary pain to focus on; weave in secondary if natural):
+- Primary pain: {top_pain}
+- Supporting evidence: {'; '.join(pain_evidence[:3])}
+- How we address it: {pain_opportunity}
+- Secondary pain: {secondary_pain}
+- Urgency signal: {urgency_signal}
 
-EMAIL GUIDELINES & CONSTRAINTS:
-Goal: Book a 15-minute introductory call.
-Framework: Start with a sharp business observation or the trigger event above. Then, briefly share how we help companies like theirs, and end with a low-pressure, curiosity-driven call-to-action.
-Tone: {tone_desc}
-Length: Strictly under {word_limit} words (body only). Aim for {max(50, word_limit - 50)}–{word_limit} words — concise wins.
-Rules:
-- Do NOT use exclamation points anywhere in the email.
-- Do NOT use generic flattery or clichés: "I hope this finds you well", "I came across your profile", "I wanted to reach out", "touching base", "circling back", "synergy", "solutions", "best-in-class".
-- Do NOT open with your company name or your own name.
-- DO open with an observation, a data point, or the trigger event — something about THEM.
-- ONE clear, low-pressure CTA at the end. Ask to talk, not for a meeting slot.
-- Sign off with the sender's first name and company on separate lines.
-- Write as one human to one person. If this email could be sent to 100 people unchanged, rewrite it.
+FROM:
+- {sender_name} at {sender_company}
+- What they offer: {sender_offering}
+- Value created: {value_prop}
+- Keywords to weave in naturally: {', '.join(keywords[:5])}
+{playbook_block}
+VOICE: {tone_desc}
 
-FOLLOW-UP (sent 5-7 days later):
-- Under 80 words.
-- Add a NEW angle, proof point, or insight — not "just bumping this".
-- Reference the first email in one short clause.
+BANNED PHRASES (never use any of these): "Hope you're doing well", "I'm reaching out because", "My name is", "Let me introduce", "I came across", "Quick question", "Just following up", "Circling back", "end-to-end solutions", "streamline", "leverage", "synergy", "best-in-class", "proven track record"
 
-OUTPUT REQUIRED:
-Provide exactly 3 distinct, compelling subject lines — each under 7 words. Vary the approach:
-  1. Provocative or insight-led
-  2. Relevance/trigger-based (reference their company, role, or recent event)
-  3. Curiosity or question-driven
-
-Return ONLY this JSON:
-{{
-  "subject_lines": [
-    "subject line 1 — provocative or insight-led",
-    "subject line 2 — relevance or trigger-based",
-    "subject line 3 — curiosity or question-driven"
-  ],
-  "subject": "the best of the three (copy it here)",
-  "to_name": "{prospect.get('name', 'Contact')}",
-  "to_title": "{prospect.get('title', '')}",
-  "body": "The complete email body, plain text. Opening observation → value bridge → CTA → sign-off.",
-  "follow_up_subject": "Short follow-up subject — can be Re: <original>",
-  "follow_up_body": "Under 80 words. New angle. References first email briefly.",
-  "poc_summary": "One plain sentence capturing the core hook offered to this prospect.",
-  "personalization_hook": "The specific signal you anchored the opener on (for user reference).",
-  "keywords_used": ["words or phrases from the research you wove in naturally"]
-}}"""
+Return ONLY this JSON (no markdown, no extra text):
+{cfg['json_schema']}"""
 
         try:
             msg = self.client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                max_tokens=1800,
-                temperature=0.72,
+                max_tokens=1200,
+                temperature=0.7,
                 response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": prompt}],
             )
-            email_data = extract_json(msg.choices[0].message.content)
+            data = extract_json(msg.choices[0].message.content)
         except Exception as e:
             logger.error(f"EmailGeneratorAgent failed: {e}")
             raise
 
-        # Ensure subject_lines is always a list of 3
-        if not isinstance(email_data.get("subject_lines"), list):
-            email_data["subject_lines"] = [email_data.get("subject", "")]
-        email_data["subject_lines"] = (email_data["subject_lines"] + ["", "", ""])[:3]
-
-        # Keep the primary subject populated
-        if not email_data.get("subject") and email_data["subject_lines"][0]:
-            email_data["subject"] = email_data["subject_lines"][0]
+        subject = data.get("subject", "")
+        body = data.get("body", "")
+        voicemail = data.get("voicemail", "")
+        rationale = data.get("rationale", "")
 
         return {
             "id": str(uuid.uuid4()),
+            "message_type": message_type,
+            "channel": cfg["channel"],
             "sender_name": sender_name,
             "sender_company": sender_company,
             "tone": tone,
             "created_at": datetime.now().isoformat(),
-            **email_data,
+            # Main content
+            "subject": subject,
+            "body": body,
+            "voicemail": voicemail,
+            "rationale": rationale,
+            "persona_angle": f"{persona_type}: {persona_instruction}",
+            "personalization_hook": anchor,
+            "poc_summary": value_prop,
+            "keywords_used": keywords[:4],
+            # Backward-compat flat fields
+            "to_name": prospect.get("name", ""),
+            "to_title": prospect.get("title", ""),
+            "follow_up_subject": "",
+            "follow_up_body": "",
+            # Sequence wrapper (single item) for backward compat with DB/display
+            "sequence": [{
+                "day": 1,
+                "channel": cfg["channel"],
+                "type": message_type,
+                "subject": subject,
+                "body": body,
+                "voicemail": voicemail,
+                "rationale": rationale,
+            }],
         }

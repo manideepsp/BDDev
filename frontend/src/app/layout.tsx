@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import Sidebar from '@/components/Sidebar';
+import AuthShell from '@/components/AuthShell';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -27,10 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.variable}>
       <body className="font-sans bg-background antialiased">
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-auto min-w-0">{children}</main>
-        </div>
+        <AuthProvider>
+          <AuthShell>
+            {children}
+          </AuthShell>
+        </AuthProvider>
       </body>
     </html>
   );

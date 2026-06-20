@@ -216,6 +216,10 @@ class EmailRefineRequest(BaseModel):
 
 from db import init_db
 from agents.vector_store import VectorStoreAgent
+from auth import (
+    hash_password, verify_password, create_access_token,
+    get_current_user, COOKIE_NAME, ACCESS_TOKEN_EXPIRE_DAYS
+)
 
 init_db()
 vector_agent = VectorStoreAgent()
@@ -225,6 +229,52 @@ vector_agent = VectorStoreAgent()
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+# --- auth routes ---
+
+@app.post("/api/auth/register")
+async def register(body: RegisterRequest, response: Response):
+    from db import get_user_by_email, create_user
+    if get_user_by_email(body.email):
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    if len(body.password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    user_id = str(uuid.uuid4())
+    hashed = hash_password(body.password)
+    create_user(user_id, body.email, body.full_name, hashed)
+    token = create_access_token({"sub": user_id, "email": body.email})
+    response.set_cookie(
+        key=COOKIE_NAME, value=token, httponly=True,
+        max_age=ACCESS_TOKEN_EXPIRE_DAYS * 86400, samesite="lax", secure=False,
+    )
+    return {"id": user_id, "email": body.email, "full_name": body.full_name}
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest, response: Response):
+    from db import get_user_by_email, update_user_last_login
+    user = get_user_by_email(body.email)
+    if not user or not verify_password(body.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    update_user_last_login(user["id"])
+    token = create_access_token({"sub": user["id"], "email": user["email"]})
+    response.set_cookie(
+        key=COOKIE_NAME, value=token, httponly=True,
+        max_age=ACCESS_TOKEN_EXPIRE_DAYS * 86400, samesite="lax", secure=False,
+    )
+    return {"id": user["id"], "email": user["email"], "full_name": user["full_name"]}
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie(key=COOKIE_NAME)
+    return {"ok": True}
+
+@app.get("/api/auth/me")
+async def me(current_user: dict = Depends(get_current_user)):
+    from db import get_user_by_id
+    user = get_user_by_id(current_user["sub"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"id": user["id"], "email": user["email"], "full_name": user["full_name"]}
 
 # --- stats ---
 
@@ -388,7 +438,10 @@ async def generate_pipeline_email(pipeline_id: str, body: EmailRequest):
         email = EmailGeneratorAgent(client).run(
             prospect, poc_plan, intelligence, p["company_name"],
             body.sender_name, body.sender_company, body.sender_offering, body.tone,
-            trigger_event=body.trigger_event, linkedin_quote=body.linkedin_quote,
+            message_type=body.message_type,
+            trigger_event=body.trigger_event,
+            linkedin_quote=body.linkedin_quote,
+            pain_focus=getattr(body, 'pain_focus', ''),
             word_limit=body.word_limit,
             feedback_prefs=feedback_prefs,
             brand_voice=brand_voice,
@@ -556,6 +609,33 @@ async def submit_feedback(body: FeedbackRequest):
 async def read_feedback(pipeline_id: str):
     from db import get_feedback
     return get_feedback(pipeline_id)
+
+# --- deal outcomes & ICP calibration ---
+
+@app.post("/api/v2/pipeline/{pipeline_id}/outcome")
+async def record_deal_outcome(pipeline_id: str, body: DealOutcomeRequest, current_user: dict = Depends(get_current_user)):
+    from db import get_pipeline as db_get_pipeline, save_deal_outcome
+    p = db_get_pipeline(pipeline_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    if body.outcome not in ("won", "lost", "dead"):
+        raise HTTPException(status_code=422, detail="outcome must be 'won', 'lost', or 'dead'")
+    icp_score = None
+    if p.get("intelligence"):
+        icp_score = (p["intelligence"].get("icp_score") or {}).get("overall")
+    oid = str(uuid.uuid4())
+    save_deal_outcome(oid, pipeline_id, body.outcome, body.actual_deal_size,
+                      body.loss_reason, body.notes, icp_score)
+    logger.info(f"Deal outcome recorded for {pipeline_id}: {body.outcome}")
+    return {"id": oid, "ok": True}
+
+@app.get("/api/v2/icp-calibration")
+async def get_icp_calibration(current_user: dict = Depends(get_current_user)):
+    from db import get_icp_calibration_stats
+    stats = get_icp_calibration_stats()
+    total_deals = sum(s["total"] for s in stats)
+    return {"bands": stats, "total_deals": total_deals,
+            "note": "Win rates become reliable after ~20 recorded outcomes per band."}
 
 # --- LinkedIn Posts ---
 

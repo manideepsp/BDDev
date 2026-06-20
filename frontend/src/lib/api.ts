@@ -67,6 +67,12 @@ export interface OutreachEmail {
   keywords_used?: string[];
   personalization_hook?: string;
   subject_lines?: string[];
+  // 5-type outreach fields
+  message_type?: string;
+  channel?: string;
+  voicemail?: string;
+  rationale?: string;
+  persona_angle?: string;
 }
 
 export interface Prospect {
@@ -83,7 +89,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   // Some callers pass paths already prefixed with `/api` (v2 endpoints); others
   // pass bare paths (legacy endpoints). Normalize so we never double the prefix.
   const url = path.startsWith('/api') ? path : `${API_BASE}${path}`;
-  const res = await fetch(url, options);
+  const res = await fetch(url, { credentials: 'include', ...options });
   if (!res.ok) {
     const text = await res.text();
 
@@ -301,6 +307,7 @@ export interface PipelineProspect {
 }
 
 export interface POCPlan {
+  deal_type?: string;
   objective: string;
   approach: string;
   timeline: string;
@@ -376,8 +383,10 @@ export interface EmailV2Request {
   sender_company: string;
   sender_offering: string;
   tone: 'professional' | 'conversational' | 'bold';
+  message_type?: 'cold_email' | 'follow_up_email' | 'linkedin_message' | 'linkedin_connection' | 'call_script';
   trigger_event?: string;
   linkedin_quote?: string;
+  pain_focus?: string;
   word_limit?: number;
 }
 
@@ -993,4 +1002,85 @@ export interface BriefData {
 
 export async function getMorningBrief(): Promise<BriefData> {
   return request('/api/v2/brief');
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  full_name: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export async function registerUser(data: RegisterRequest): Promise<User> {
+  return request('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function loginUser(data: LoginRequest): Promise<User> {
+  return request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function logoutUser(): Promise<void> {
+  await request('/api/auth/logout', { method: 'POST' });
+}
+
+export async function getCurrentUser(): Promise<User> {
+  return request('/api/auth/me');
+}
+
+// ── Deal Outcomes ─────────────────────────────────────────────────────────────
+
+export interface DealOutcomeRequest {
+  outcome: 'won' | 'lost' | 'dead';
+  actual_deal_size?: string;
+  loss_reason?: string;
+  notes?: string;
+}
+
+export interface ICPCalibrationBand {
+  band: string;
+  total: number;
+  won: number;
+  lost: number;
+  win_rate: number | null;
+}
+
+export interface ICPCalibration {
+  bands: ICPCalibrationBand[];
+  total_deals: number;
+  note: string;
+}
+
+export async function recordDealOutcome(
+  pipelineId: string,
+  data: DealOutcomeRequest
+): Promise<{ id: string; ok: boolean }> {
+  return request(`/api/v2/pipeline/${pipelineId}/outcome`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getICPCalibration(): Promise<ICPCalibration> {
+  return request('/api/v2/icp-calibration');
 }
