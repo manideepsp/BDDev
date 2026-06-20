@@ -147,7 +147,7 @@ function OutreachResultCard({ email }: { email: OutreachEmail }) {
 // ── DealOutcomeModal ──────────────────────────────────────────────────────────
 
 function DealOutcomeModal({ pipelineId, onClose }: { pipelineId: string; onClose: () => void }) {
-  const [outcome, setOutcome] = useState<'won' | 'lost' | 'dead'>('won');
+  const [selectedOutcome, setSelectedOutcome] = useState<'won' | 'lost' | 'dead' | null>(null);
   const [dealSize, setDealSize] = useState('');
   const [lossReason, setLossReason] = useState('');
   const [notes, setNotes] = useState('');
@@ -156,12 +156,13 @@ function DealOutcomeModal({ pipelineId, onClose }: { pipelineId: string; onClose
   const [error, setError] = useState('');
 
   async function handleSave() {
+    if (!selectedOutcome) return;
     setSaving(true); setError('');
     try {
       await recordDealOutcome(pipelineId, {
-        outcome,
+        outcome: selectedOutcome,
         actual_deal_size: dealSize || undefined,
-        loss_reason: outcome === 'won' ? undefined : (lossReason || undefined),
+        loss_reason: selectedOutcome === 'won' ? undefined : (lossReason || undefined),
         notes: notes || undefined,
       });
       setSaved(true);
@@ -182,10 +183,10 @@ function DealOutcomeModal({ pipelineId, onClose }: { pipelineId: string; onClose
         <CardContent className="space-y-4">
           <div className="flex gap-2">
             {(['won', 'lost', 'dead'] as const).map(o => (
-              <button key={o} onClick={() => setOutcome(o)}
+              <button key={o} onClick={() => setSelectedOutcome(o)}
                 className={cn(
                   'flex-1 py-2 rounded-lg text-sm font-medium border transition-colors',
-                  outcome === o
+                  selectedOutcome === o
                     ? o === 'won' ? 'bg-emerald-600 text-white border-emerald-600'
                     : o === 'lost' ? 'bg-destructive text-destructive-foreground border-destructive'
                     : 'bg-muted text-foreground border-border'
@@ -195,11 +196,12 @@ function DealOutcomeModal({ pipelineId, onClose }: { pipelineId: string; onClose
               </button>
             ))}
           </div>
-          {outcome === 'won' && (
+          {!selectedOutcome && <p className="text-xs text-muted-foreground mt-1">Select an outcome above</p>}
+          {selectedOutcome === 'won' && (
             <Input value={dealSize} onChange={e => setDealSize(e.target.value)}
               placeholder="Actual deal size (e.g. $120K)" />
           )}
-          {(outcome === 'lost' || outcome === 'dead') && (
+          {(selectedOutcome === 'lost' || selectedOutcome === 'dead') && (
             <Input value={lossReason} onChange={e => setLossReason(e.target.value)}
               placeholder="Loss reason (e.g. budget freeze, chose competitor)" />
           )}
@@ -208,7 +210,7 @@ function DealOutcomeModal({ pipelineId, onClose }: { pipelineId: string; onClose
           {error && <p className="text-xs text-destructive">⚠ {error}</p>}
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button onClick={handleSave} disabled={saving || saved} className="flex-1">
+            <Button onClick={handleSave} disabled={!selectedOutcome || saving || saved} className="flex-1">
               {saved ? '✓ Saved!' : saving ? 'Saving...' : 'Save Outcome'}
             </Button>
           </div>
@@ -254,6 +256,7 @@ export default function ProspectPage() {
   const [pitchAssets, setPitchAssets] = useState<PitchAssets | null>(null);
 
   const [messageType, setMessageType] = useState<MessageType>('cold_email');
+  const [wordLimit, setWordLimit] = useState<number>(150);
   const [loadingPitch, setLoadingPitch] = useState(false);
   const [loadingPOC, setLoadingPOC] = useState(false);
   const [loadingEmail, setLoadingEmail] = useState(false);
@@ -344,6 +347,7 @@ export default function ProspectPage() {
         trigger_event: form.trigger_event || undefined,
         linkedin_quote: form.linkedin_quote || undefined,
         pain_focus: form.pain_focus || undefined,
+        word_limit: wordLimit,
       });
       setEmails(prev => [email, ...prev]);
     } catch (err) {
@@ -727,6 +731,23 @@ export default function ProspectPage() {
                   </p>
                 </div>
               )}
+
+              {/* Word limit */}
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">
+                  Word Count
+                </label>
+                <input
+                  type="number"
+                  min={50}
+                  max={500}
+                  step={10}
+                  value={wordLimit}
+                  onChange={e => setWordLimit(Math.min(500, Math.max(50, Number(e.target.value))))}
+                  className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">50 = punchy one-liner, 150 = standard cold email, 500 = long-form</p>
+              </div>
 
               {emailError && (
                 <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-4 py-3">

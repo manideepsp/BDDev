@@ -184,6 +184,7 @@ class EmailGeneratorAgent:
         contact_angle = prospect.get("contact_angle", "")
 
         playbook_block = f"\n{EMAIL_PLAYBOOK}\n" if cfg["channel"] == "email" else ""
+        word_limit_block = f"\nWORD COUNT: Write the message in exactly {word_limit} words (±10%). Do not exceed {word_limit} words.\n"
 
         # Brand voice injection
         brand_voice_block = ""
@@ -246,7 +247,7 @@ FROM:
 - Keywords to weave in naturally: {', '.join(keywords[:5])}
 {playbook_block}
 VOICE: {tone_desc}
-
+{word_limit_block}
 BANNED PHRASES (never use any of these): "Hope you're doing well", "I'm reaching out because", "My name is", "Let me introduce", "I came across", "Quick question", "Just following up", "Circling back", "end-to-end solutions", "streamline", "leverage", "synergy", "best-in-class", "proven track record"
 
 Return ONLY this JSON (no markdown, no extra text):

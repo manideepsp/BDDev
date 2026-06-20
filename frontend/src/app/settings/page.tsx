@@ -140,7 +140,7 @@ export default function SettingsPage() {
     try {
       await saveCompanyProfile(profile);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      setTimeout(() => setSaved(false), 3000);
     } finally {
       setSaving(false);
     }
