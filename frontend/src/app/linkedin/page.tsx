@@ -16,6 +16,32 @@ import {
   getLinkedInAnalytics, getScheduledPosts, updateLinkedInPost, exportContentBrief,
 } from '@/lib/api';
 
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
+
+import {
+  PenLine, BarChart2, Calendar, Target, Sparkles, Copy, Trash2,
+  Check, Plus, X, RefreshCw, ChevronDown, ChevronUp, Search, Filter,
+  Send, Clock, Tag, MessageSquare, Star, Zap, RotateCcw, Eye, Loader2,
+  ArrowRight, CheckCircle2, Lightbulb,
+} from 'lucide-react';
+
+function Linkedin({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+    </svg>
+  );
+}
+
 // ── Toast system ──────────────────────────────────────────────────────────────
 
 interface Toast { id: string; msg: string; type: 'success' | 'error' | 'info'; }
@@ -24,12 +50,16 @@ function ToastContainer({ toasts }: { toasts: Toast[] }) {
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
       {toasts.map(t => (
-        <div key={t.id} className={`px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 animate-slide-up pointer-events-auto ${
-          t.type === 'success' ? 'bg-emerald-600 text-white' :
-          t.type === 'error' ? 'bg-red-600 text-white' :
-          'bg-slate-800 text-white'
-        }`}>
-          {t.type === 'success' ? '✓' : t.type === 'error' ? '✕' : 'ℹ'} {t.msg}
+        <div key={t.id} className={cn(
+          'px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 animate-slide-up pointer-events-auto',
+          t.type === 'success' ? 'bg-success text-success-foreground' :
+          t.type === 'error'   ? 'bg-destructive text-destructive-foreground' :
+          'bg-card text-foreground border border-border'
+        )}>
+          {t.type === 'success' ? <Check className="w-4 h-4 flex-shrink-0" /> :
+           t.type === 'error'   ? <X className="w-4 h-4 flex-shrink-0" /> :
+           <Lightbulb className="w-4 h-4 flex-shrink-0" />}
+          {t.msg}
         </div>
       ))}
     </div>
@@ -48,27 +78,41 @@ function useToast() {
 
 // ── Skeleton loaders ──────────────────────────────────────────────────────────
 
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`bg-slate-200 rounded animate-pulse ${className}`} />;
-}
-
 function PostCardSkeleton() {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-      <div className="flex gap-2 mb-3"><Skeleton className="h-5 w-24" /><Skeleton className="h-5 w-16" /></div>
-      <Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-5/6 mb-2" /><Skeleton className="h-4 w-4/6 mb-4" />
-      <div className="flex gap-2 border-t border-slate-100 pt-3"><Skeleton className="h-7 w-16" /><Skeleton className="h-7 w-20" /></div>
-    </div>
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex gap-2 mb-3">
+          <Skeleton className="h-5 w-24 rounded-full" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+        <Skeleton className="h-4 w-full mb-2" />
+        <Skeleton className="h-4 w-5/6 mb-2" />
+        <Skeleton className="h-4 w-4/6 mb-4" />
+        <div className="flex gap-2 border-t border-border pt-3">
+          <Skeleton className="h-7 w-16 rounded-md" />
+          <Skeleton className="h-7 w-20 rounded-md" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function AnalysisSkeleton() {
   return (
     <div className="space-y-4">
-      <Skeleton className="h-24 w-full" />
-      <div className="grid grid-cols-3 gap-3"><Skeleton className="h-16" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
-      <Skeleton className="h-20 w-full" />
-      <div className="space-y-3"><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></div>
+      <Skeleton className="h-24 w-full rounded-2xl" />
+      <div className="grid grid-cols-3 gap-3">
+        <Skeleton className="h-16 rounded-2xl" />
+        <Skeleton className="h-16 rounded-2xl" />
+        <Skeleton className="h-16 rounded-2xl" />
+      </div>
+      <Skeleton className="h-20 w-full rounded-2xl" />
+      <div className="space-y-3">
+        <Skeleton className="h-20 w-full rounded-2xl" />
+        <Skeleton className="h-20 w-full rounded-2xl" />
+        <Skeleton className="h-20 w-full rounded-2xl" />
+      </div>
     </div>
   );
 }
@@ -76,43 +120,45 @@ function AnalysisSkeleton() {
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 const HOOK_COLORS: Record<string, string> = {
-  question:   'bg-blue-100 text-blue-700',
-  stat:       'bg-emerald-100 text-emerald-700',
-  story:      'bg-violet-100 text-violet-700',
-  contrarian: 'bg-amber-100 text-amber-700',
-  bold_claim: 'bg-red-100 text-red-700',
+  question:   'bg-primary/10 text-primary',
+  stat:       'bg-success-subtle text-success',
+  story:      'bg-purple-100 text-purple-700',
+  contrarian: 'bg-warning-subtle text-warning-foreground',
+  bold_claim: 'bg-danger-subtle text-danger',
 };
 
 const ANGLE_COLORS: Record<string, string> = {
-  contrarian: 'bg-amber-100 text-amber-700',
-  trend:      'bg-violet-100 text-violet-700',
-  story:      'bg-blue-100 text-blue-700',
-  'how-to':   'bg-emerald-100 text-emerald-700',
+  contrarian: 'bg-warning-subtle text-warning-foreground',
+  trend:      'bg-purple-100 text-purple-700',
+  story:      'bg-primary/10 text-primary',
+  'how-to':   'bg-success-subtle text-success',
   data:       'bg-indigo-100 text-indigo-700',
   opinion:    'bg-pink-100 text-pink-700',
 };
 
-const STRATEGY_META: Record<string, { label: string; color: string }> = {
-  trend_spotlight: { label: 'Trend Spotlight',  color: 'bg-violet-100 text-violet-700' },
-  pain_narrative:  { label: 'Pain Narrative',   color: 'bg-red-100 text-red-700' },
-  contrarian:      { label: 'Contrarian Take',  color: 'bg-amber-100 text-amber-700' },
-  how_we_help:     { label: 'How We Help',      color: 'bg-blue-100 text-blue-700' },
-  industry_take:   { label: 'Industry Take',    color: 'bg-indigo-100 text-indigo-700' },
-  case_signal:     { label: 'Case Signal',      color: 'bg-emerald-100 text-emerald-700' },
+const STRATEGY_META: Record<string, { label: string; variant: 'default' | 'secondary' | 'success' | 'warning' | 'danger' | 'muted' }> = {
+  trend_spotlight: { label: 'Trend Spotlight',  variant: 'default' },
+  pain_narrative:  { label: 'Pain Narrative',   variant: 'danger' },
+  contrarian:      { label: 'Contrarian Take',  variant: 'warning' },
+  how_we_help:     { label: 'How We Help',      variant: 'default' },
+  industry_take:   { label: 'Industry Take',    variant: 'secondary' },
+  case_signal:     { label: 'Case Signal',      variant: 'success' },
 };
 
 const PERSONAS = [
-  { value: 'auto',           label: 'Auto',           desc: 'Balanced, inferred from profile',     icon: '🤖' },
-  { value: 'founder',        label: 'Founder Voice',  desc: 'Visionary, candid, big-picture',      icon: '🚀' },
-  { value: 'technical',      label: 'Technical Expert', desc: 'Precise, credible, how-things-work', icon: '🛠️' },
-  { value: 'business_leader', label: 'Business Leader', desc: 'ROI-focused, executive-level',        icon: '📈' },
-  { value: 'bd_lead',        label: 'BD Lead',        desc: 'Client-centric, opportunity-aware',   icon: '🤝' },
+  { value: 'auto',            label: 'Auto',            desc: 'Balanced, inferred from profile',     icon: Zap },
+  { value: 'founder',         label: 'Founder Voice',   desc: 'Visionary, candid, big-picture',      icon: Star },
+  { value: 'technical',       label: 'Technical Expert', desc: 'Precise, credible, how-things-work', icon: Target },
+  { value: 'business_leader', label: 'Business Leader', desc: 'ROI-focused, executive-level',        icon: BarChart2 },
+  { value: 'bd_lead',         label: 'BD Lead',         desc: 'Client-centric, opportunity-aware',   icon: Linkedin },
 ];
 
-function charColor(n: number) {
-  return n <= 1300 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
-         n <= 1700 ? 'text-amber-700 bg-amber-50 border-amber-200' :
-         'text-red-700 bg-red-50 border-red-200';
+function charCountVariant(n: number): 'success' | 'warning' | 'danger' {
+  return n <= 1300 ? 'success' : n <= 1700 ? 'warning' : 'danger';
+}
+
+function charProgressColor(n: number) {
+  return n <= 1300 ? 'bg-success' : n <= 1700 ? 'bg-warning' : 'bg-danger';
 }
 
 // ── Analytics bar ─────────────────────────────────────────────────────────────
@@ -120,20 +166,24 @@ function charColor(n: number) {
 function AnalyticsBar({ analytics }: { analytics: LinkedInAnalytics | null }) {
   if (!analytics) return null;
   const items = [
-    { label: 'Generated this month', value: analytics.this_month_generated, color: 'text-indigo-700' },
-    { label: 'Published this month',  value: analytics.this_month_published, color: 'text-emerald-700' },
-    { label: 'Scheduled',            value: analytics.scheduled_posts,       color: 'text-amber-700' },
-    { label: 'Ideas drafted',         value: analytics.drafted_ideas,         color: 'text-violet-700' },
-    { label: 'Competitors tracked',   value: analytics.targets_tracked,       color: 'text-slate-600' },
+    { label: 'Generated',    value: analytics.this_month_generated, icon: Sparkles },
+    { label: 'Published',    value: analytics.this_month_published,  icon: CheckCircle2 },
+    { label: 'Scheduled',    value: analytics.scheduled_posts,       icon: Calendar },
+    { label: 'Ideas drafted', value: analytics.drafted_ideas,        icon: PenLine },
+    { label: 'Tracked',      value: analytics.targets_tracked,       icon: Eye },
   ];
   return (
-    <div className="flex items-center gap-6 flex-wrap mt-4 pt-4 border-t border-slate-100">
-      {items.map(item => (
-        <div key={item.label} className="flex items-center gap-1.5">
-          <span className={`text-lg font-bold ${item.color}`}>{item.value}</span>
-          <span className="text-[11px] text-slate-400">{item.label}</span>
-        </div>
-      ))}
+    <div className="flex items-center gap-3 flex-wrap mt-4 pt-4 border-t border-border">
+      {items.map(item => {
+        const Icon = item.icon;
+        return (
+          <div key={item.label} className="flex items-center gap-2 bg-muted rounded-xl px-3 py-2">
+            <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-base font-bold text-foreground">{item.value}</span>
+            <span className="text-[11px] text-muted-foreground">{item.label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -157,12 +207,7 @@ function ContentCalendar({ scheduledPosts, ideas, onAssignIdea, onJumpToPost }: 
     const d = new Date(today);
     d.setDate(today.getDate() + i);
     const iso = d.toISOString().split('T')[0];
-    days.push({
-      date: d,
-      iso,
-      label: d.getDate().toString(),
-      dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
-    });
+    days.push({ date: d, iso, label: d.getDate().toString(), dayName: d.toLocaleDateString('en-US', { weekday: 'short' }) });
   }
 
   const byDay = scheduledPosts.reduce<Record<string, ScheduledPost[]>>((acc, p) => {
@@ -174,62 +219,65 @@ function ContentCalendar({ scheduledPosts, ideas, onAssignIdea, onJumpToPost }: 
   const unscheduledIdeas = ideas.filter(i => i.status === 'idea');
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 overflow-x-auto">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">14-Day Content Calendar</p>
-        <p className="text-xs text-slate-400">{unscheduledIdeas.length} unscheduled idea{unscheduledIdeas.length !== 1 ? 's' : ''}</p>
-      </div>
-      <div className="grid grid-cols-7 gap-1.5 min-w-[600px]">
-        {days.map(day => {
-          const posts = byDay[day.iso] || [];
-          const isToday = day.iso === today.toISOString().split('T')[0];
-          const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
-          return (
-            <div key={day.iso} className="relative"
-              onMouseEnter={() => setHoverDay(day.iso)}
-              onMouseLeave={() => { setHoverDay(null); }}>
-              <div className={`min-h-[80px] rounded-lg border p-2 transition-colors cursor-pointer ${
-                isToday ? 'border-indigo-300 bg-indigo-50' :
-                isWeekend ? 'border-slate-100 bg-slate-50' :
-                hoverDay === day.iso ? 'border-indigo-200 bg-white' :
-                'border-slate-100 bg-white'
-              }`}
-                onClick={() => { if (unscheduledIdeas.length > 0) setShowIdeaPicker(prev => prev === day.iso ? null : day.iso); }}>
-                <p className={`text-[10px] font-medium mb-0.5 ${isToday ? 'text-indigo-700' : 'text-slate-400'}`}>{day.dayName}</p>
-                <p className={`text-sm font-bold ${isToday ? 'text-indigo-800' : 'text-slate-700'}`}>{day.label}</p>
-                {posts.map(p => (
-                  <div key={p.id} onClick={e => { e.stopPropagation(); onJumpToPost(p.id); }}
-                    className="mt-1 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded truncate cursor-pointer hover:bg-emerald-200 transition-colors">
-                    {p.trend_cluster || p.strategy || 'Post'}
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">14-Day Content Calendar</p>
+          <Badge variant="muted" size="sm">{unscheduledIdeas.length} unscheduled idea{unscheduledIdeas.length !== 1 ? 's' : ''}</Badge>
+        </div>
+        <div className="grid grid-cols-7 gap-1.5 min-w-[600px] overflow-x-auto">
+          {days.map(day => {
+            const posts = byDay[day.iso] || [];
+            const isToday = day.iso === today.toISOString().split('T')[0];
+            const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
+            return (
+              <div key={day.iso} className="relative"
+                onMouseEnter={() => setHoverDay(day.iso)}
+                onMouseLeave={() => setHoverDay(null)}>
+                <div className={cn(
+                  'min-h-[80px] rounded-xl border p-2 transition-colors cursor-pointer',
+                  isToday    ? 'border-primary/50 bg-primary/5' :
+                  isWeekend  ? 'border-border bg-muted/40' :
+                  hoverDay === day.iso ? 'border-primary/30 bg-card' :
+                  'border-border bg-card'
+                )}
+                  onClick={() => { if (unscheduledIdeas.length > 0) setShowIdeaPicker(prev => prev === day.iso ? null : day.iso); }}>
+                  <p className={cn('text-[10px] font-medium mb-0.5', isToday ? 'text-primary' : 'text-muted-foreground')}>{day.dayName}</p>
+                  <p className={cn('text-sm font-bold', isToday ? 'text-primary' : 'text-foreground')}>{day.label}</p>
+                  {posts.map(p => (
+                    <div key={p.id} onClick={e => { e.stopPropagation(); onJumpToPost(p.id); }}
+                      className="mt-1 text-[10px] bg-success-subtle text-success px-1.5 py-0.5 rounded truncate cursor-pointer hover:bg-success/20 transition-colors">
+                      {p.trend_cluster || p.strategy || 'Post'}
+                    </div>
+                  ))}
+                  {posts.length === 0 && hoverDay === day.iso && unscheduledIdeas.length > 0 && (
+                    <div className="mt-1 text-[10px] text-primary/60 italic">+ add idea</div>
+                  )}
+                </div>
+                {showIdeaPicker === day.iso && unscheduledIdeas.length > 0 && (
+                  <div className="absolute top-full left-0 z-20 mt-1 bg-card rounded-2xl border border-border shadow-card p-3 w-56 animate-fade-in">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Assign idea</p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {unscheduledIdeas.map(idea => (
+                        <button key={idea.id} onClick={() => { onAssignIdea(idea.id, day.iso); setShowIdeaPicker(null); }}
+                          className="w-full text-left text-xs text-foreground hover:bg-primary/5 px-2 py-1.5 rounded-lg transition-colors">
+                          {idea.topic}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setShowIdeaPicker(null)} className="mt-2 text-[10px] text-muted-foreground hover:text-foreground w-full text-center">Cancel</button>
                   </div>
-                ))}
-                {posts.length === 0 && hoverDay === day.iso && unscheduledIdeas.length > 0 && (
-                  <div className="mt-1 text-[10px] text-indigo-400 italic">+ add idea</div>
                 )}
               </div>
-              {showIdeaPicker === day.iso && unscheduledIdeas.length > 0 && (
-                <div className="absolute top-full left-0 z-20 mt-1 bg-white rounded-xl border border-slate-200 shadow-lg p-3 w-56 animate-fade-in">
-                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Assign idea</p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
-                    {unscheduledIdeas.map(idea => (
-                      <button key={idea.id} onClick={() => { onAssignIdea(idea.id, day.iso); setShowIdeaPicker(null); }}
-                        className="w-full text-left text-xs text-slate-700 hover:bg-indigo-50 px-2 py-1.5 rounded-lg transition-colors">
-                        {idea.topic}
-                      </button>
-                    ))}
-                  </div>
-                  <button onClick={() => setShowIdeaPicker(null)} className="mt-2 text-[10px] text-slate-400 hover:text-slate-600 w-full text-center">Cancel</button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-// ── Post Card (production version) ───────────────────────────────────────────
+// ── Post Card ─────────────────────────────────────────────────────────────────
 
 interface HistoryEntry { role: 'user' | 'assistant'; content: string; }
 
@@ -259,43 +307,48 @@ function RefinePanel({ post, onApply, onClose, history, editContent, onUpdate }:
   }
 
   return (
-    <div className="border-l-2 border-indigo-200 ml-4 pl-4 mt-3 animate-fade-in">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">Edit with AI</p>
-        <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600">Close</button>
+    <div className="border-l-2 border-primary/30 ml-4 pl-4 mt-4 animate-fade-in">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-primary uppercase tracking-wider">Edit with AI</p>
+        <Button variant="ghost" size="icon-sm" onClick={onClose}><X className="w-3.5 h-3.5" /></Button>
       </div>
       {editContent && editContent !== post.content && (
-        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500 mb-1">Refined version</p>
-          <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{editContent}</p>
-          <div className="flex gap-3 mt-2">
-            <button onClick={() => onApply(editContent)} className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-md hover:bg-indigo-700 font-medium">Apply</button>
-            <button onClick={() => onUpdate(post.content, [])} className="text-xs text-slate-400 hover:text-slate-600 underline">Revert</button>
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 mb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-1">Refined version</p>
+          <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{editContent}</p>
+          <div className="flex gap-3 mt-3">
+            <Button size="sm" onClick={() => onApply(editContent)}>Apply</Button>
+            <Button size="sm" variant="ghost" onClick={() => onUpdate(post.content, [])}>Revert</Button>
           </div>
         </div>
       )}
       {history.length > 0 && (
         <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
           {history.map((h, i) => (
-            <div key={i} className={`px-3 py-2 rounded-lg text-xs leading-relaxed ${h.role === 'user' ? 'bg-slate-100 text-slate-700 ml-6' : 'bg-white border border-slate-200 text-slate-600 mr-6'}`}>
-              <span className="font-medium text-[10px] uppercase tracking-wider text-slate-400 block mb-0.5">{h.role === 'user' ? 'You' : 'AI'}</span>
+            <div key={i} className={cn(
+              'px-3 py-2 rounded-lg text-xs leading-relaxed',
+              h.role === 'user' ? 'bg-muted text-foreground ml-6' : 'bg-card border border-border text-muted-foreground mr-6'
+            )}>
+              <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground block mb-0.5">{h.role === 'user' ? 'You' : 'AI'}</span>
               <span className="whitespace-pre-wrap">{h.content.length > 150 ? h.content.slice(0, 150) + '…' : h.content}</span>
             </div>
           ))}
           <div ref={bottomRef} />
         </div>
       )}
-      {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+      {error && <p className="text-xs text-danger mb-2">{error}</p>}
       <div className="flex gap-2">
-        <input type="text" value={message} onChange={e => setMessage(e.target.value)}
+        <Input
+          value={message}
+          onChange={e => setMessage(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           placeholder="Make it shorter, add a stat, stronger hook..."
-          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400"
-          disabled={loading} />
-        <button onClick={handleSend} disabled={!message.trim() || loading}
-          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-lg transition-colors">
-          {loading ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : 'Send'}
-        </button>
+          disabled={loading}
+          className="flex-1"
+        />
+        <Button onClick={handleSend} disabled={!message.trim() || loading} size="sm">
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+        </Button>
       </div>
     </div>
   );
@@ -318,89 +371,135 @@ function PostCard({ post, isRefineOpen, refineHistory, editContent, isSelected, 
   const [showSchedule, setShowSchedule] = useState(false);
   const [datePick, setDatePick] = useState(post.planned_date ?? '');
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const meta = STRATEGY_META[post.strategy] ?? { label: post.strategy || 'Post', color: 'bg-slate-100 text-slate-600' };
+  const meta = STRATEGY_META[post.strategy] ?? { label: post.strategy || 'Post', variant: 'muted' as const };
   const count = editContent ? editContent.length : post.char_count;
   const display = editContent ?? post.content;
+  const charPct = Math.min(100, Math.round((count / 3000) * 100));
 
   return (
-    <div className={`bg-white rounded-xl border shadow-sm p-5 transition-all ${isSelected ? 'border-indigo-300 ring-1 ring-indigo-200' : 'border-slate-200'}`}>
-      {/* Header row */}
-      <div className="flex items-start gap-3 mb-3">
-        <input type="checkbox" checked={isSelected} onChange={onToggleSelect}
-          className="mt-1 w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer" />
-        <div className="flex items-center gap-2 flex-wrap flex-1">
-          <span className={`text-[10px] font-semibold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span>
-          {post.trend_cluster && (
-            <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">{post.trend_cluster}</span>
-          )}
-          {post.planned_date && (
-            <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
-              📅 {new Date(post.planned_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </span>
-          )}
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ml-auto ${charColor(count)}`}>{count} chars</span>
+    <Card className={cn('transition-all', isSelected ? 'border-primary/40 ring-1 ring-primary/20' : '')}>
+      <CardContent className="p-5">
+        {/* Header row */}
+        <div className="flex items-start gap-3 mb-3">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={onToggleSelect}
+            className="mt-1 w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary flex-shrink-0 cursor-pointer"
+          />
+          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+            <Badge variant={meta.variant} size="sm">{meta.label}</Badge>
+            {post.trend_cluster && (
+              <Badge variant="secondary" size="sm">{post.trend_cluster}</Badge>
+            )}
+            {post.planned_date && (
+              <Badge variant="warning" size="sm">
+                <Calendar className="w-3 h-3" />
+                {new Date(post.planned_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </Badge>
+            )}
+            {post.status === 'selected' && (
+              <Badge variant="success" size="sm" className="ml-auto"><Check className="w-3 h-3" /> Selected</Badge>
+            )}
+            {post.status === 'posted' && (
+              <Badge variant="muted" size="sm" className="ml-auto"><CheckCircle2 className="w-3 h-3" /> Posted</Badge>
+            )}
+          </div>
         </div>
-      </div>
 
-      {post.strategy_note && <p className="text-[11px] text-slate-400 italic mb-3 leading-relaxed">{post.strategy_note}</p>}
-      <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed mb-4">{display}</p>
+        {post.strategy_note && <p className="text-[11px] text-muted-foreground italic mb-3 leading-relaxed">{post.strategy_note}</p>}
+        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed mb-3">{display}</p>
 
-      {/* Action row */}
-      <div className="flex items-center gap-2 flex-wrap border-t border-slate-100 pt-3">
-        {post.status === 'selected' ? (
-          <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>Selected
-          </span>
-        ) : (
-          <button onClick={() => onStatusChange(post.id, 'selected')} className="text-xs font-medium text-slate-600 border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 px-3 py-1.5 rounded-lg transition-colors">Select</button>
-        )}
-        {post.status === 'selected' && (
-          <button onClick={() => onStatusChange(post.id, 'posted')} className="text-xs font-medium text-slate-500 border border-slate-200 hover:border-emerald-300 hover:text-emerald-600 px-3 py-1.5 rounded-lg transition-colors">Mark Posted</button>
-        )}
-        {post.status === 'posted' && <span className="text-xs font-medium text-slate-400 px-3 py-1.5">✓ Posted</span>}
+        {/* Char count progress */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-muted-foreground">Character count</span>
+            <Badge variant={charCountVariant(count)} size="sm">{count} chars</Badge>
+          </div>
+          <Progress value={charPct} indicatorClassName={charProgressColor(count)} className="h-1" />
+        </div>
 
-        <button onClick={onToggleRefine} className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${isRefineOpen ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'}`}>Edit with AI</button>
+        {/* Action row */}
+        <div className="flex items-center gap-2 flex-wrap border-t border-border pt-3">
+          {post.status !== 'selected' && post.status !== 'posted' && (
+            <Button size="sm" variant="outline" onClick={() => onStatusChange(post.id, 'selected')}>Select</Button>
+          )}
+          {post.status === 'selected' && (
+            <Button size="sm" variant="outline" onClick={() => onStatusChange(post.id, 'posted')}>
+              <CheckCircle2 className="w-3.5 h-3.5" /> Mark Posted
+            </Button>
+          )}
 
-        <button onClick={() => setShowSchedule(s => !s)} className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${showSchedule ? 'bg-amber-50 border-amber-200 text-amber-700' : 'border-slate-200 text-slate-500 hover:border-amber-200 hover:text-amber-600'}`}>📅</button>
+          <Button
+            size="sm"
+            variant={isRefineOpen ? 'secondary' : 'outline'}
+            onClick={onToggleRefine}
+          >
+            <PenLine className="w-3.5 h-3.5" /> Edit with AI
+          </Button>
 
-        <button onClick={() => onCopy(display)} className="text-xs font-medium text-slate-500 border border-slate-200 hover:border-slate-300 px-3 py-1.5 rounded-lg transition-colors">Copy</button>
+          <Button
+            size="icon-sm"
+            variant={showSchedule ? 'secondary' : 'outline'}
+            onClick={() => setShowSchedule(s => !s)}
+            title="Schedule"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+          </Button>
 
-        {!confirmDelete ? (
-          <button onClick={() => setConfirmDelete(true)} className="ml-auto text-xs text-slate-300 hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 px-2 py-1.5 rounded-lg transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-          </button>
-        ) : (
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-slate-500">Delete?</span>
-            <button onClick={() => onDelete(post.id)} className="text-xs font-medium text-red-600 hover:text-red-700">Yes</button>
-            <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-400 hover:text-slate-600">No</button>
+          <Button size="icon-sm" variant="outline" onClick={() => onCopy(display)} title="Copy">
+            <Copy className="w-3.5 h-3.5" />
+          </Button>
+
+          <div className="ml-auto">
+            {!confirmDelete ? (
+              <Button size="icon-sm" variant="ghost" onClick={() => setConfirmDelete(true)} className="text-muted-foreground hover:text-danger hover:bg-danger-subtle">
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Delete?</span>
+                <Button size="sm" variant="destructive" onClick={() => onDelete(post.id)}>Yes</Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>No</Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Schedule picker */}
+        {showSchedule && (
+          <div className="mt-3 flex items-center gap-2 pt-3 border-t border-border animate-fade-in">
+            <label className="text-xs text-muted-foreground flex-shrink-0">Plan for:</label>
+            <input
+              type="date"
+              value={datePick}
+              onChange={e => setDatePick(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              className="flex h-9 rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <Button size="sm" onClick={() => { onSchedule(post.id, datePick); setShowSchedule(false); }} disabled={!datePick}>
+              Save
+            </Button>
+            {post.planned_date && (
+              <Button size="sm" variant="ghost" onClick={() => { onSchedule(post.id, ''); setDatePick(''); setShowSchedule(false); }}>
+                Clear
+              </Button>
+            )}
           </div>
         )}
-      </div>
 
-      {/* Schedule picker */}
-      {showSchedule && (
-        <div className="mt-3 flex items-center gap-2 pt-3 border-t border-slate-100 animate-fade-in">
-          <label className="text-xs text-slate-500 flex-shrink-0">Plan for:</label>
-          <input type="date" value={datePick} onChange={e => setDatePick(e.target.value)}
-            min={new Date().toISOString().split('T')[0]}
-            className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800" />
-          <button onClick={() => { onSchedule(post.id, datePick); setShowSchedule(false); }}
-            disabled={!datePick}
-            className="text-xs font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-3 py-1 rounded-lg transition-colors">
-            Save
-          </button>
-          {post.planned_date && (
-            <button onClick={() => { onSchedule(post.id, ''); setDatePick(''); setShowSchedule(false); }} className="text-xs text-slate-400 hover:text-slate-600 underline">Clear</button>
-          )}
-        </div>
-      )}
-
-      {isRefineOpen && (
-        <RefinePanel post={post} history={refineHistory} editContent={editContent}
-          onApply={c => onApplyRefine(post.id, c)} onClose={onToggleRefine} onUpdate={onRefineUpdate} />
-      )}
-    </div>
+        {isRefineOpen && (
+          <RefinePanel
+            post={post}
+            history={refineHistory}
+            editContent={editContent}
+            onApply={c => onApplyRefine(post.id, c)}
+            onClose={onToggleRefine}
+            onUpdate={onRefineUpdate}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -444,62 +543,94 @@ function IntelligenceTab({ companyProfile, targets, analysis, fetching, onAddTar
     <div className="grid lg:grid-cols-3 gap-6">
       {/* Left: Companies panel */}
       <div className="lg:col-span-1 space-y-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Companies to watch</p>
-
-          {ownName ? (
-            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 mb-3">
-              <span className="text-xs">⭐</span>
-              <span className="text-sm font-medium text-indigo-700 truncate flex-1">{ownName}</span>
-              <span className="text-[10px] text-indigo-500 font-medium">Your company</span>
-            </div>
-          ) : (
-            <a href="/settings" className="block text-xs text-slate-400 hover:text-indigo-600 mb-3 underline">
-              Configure your company in Settings →
-            </a>
-          )}
-
-          <div className="space-y-2 mb-3">
-            {targets.map(t => (
-              <div key={t.id} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 group">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-700 truncate">{t.company_name}</p>
-                  {t.website_url && <p className="text-[10px] text-slate-400 truncate">{t.website_url}</p>}
-                </div>
-                <button onClick={() => onDeleteTarget(t.id)} className="text-slate-300 hover:text-red-500 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100">
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Target className="w-4 h-4 text-primary" /> Companies to watch
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {ownName ? (
+              <div className="flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
+                <Star className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                <span className="text-sm font-medium text-primary truncate flex-1">{ownName}</span>
+                <Badge variant="default" size="sm">Your company</Badge>
               </div>
-            ))}
-          </div>
+            ) : (
+              <a href="/settings" className="block text-xs text-muted-foreground hover:text-primary underline">
+                Configure your company in Settings →
+              </a>
+            )}
 
-          <div className="space-y-2 border-t border-slate-100 pt-3">
-            <input type="text" value={name} onChange={e => setName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && name.trim()) { onAddTarget(name.trim(), url.trim()); setName(''); setUrl(''); } }}
-              placeholder="Competitor name"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400" />
-            <input type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="Website URL (optional)"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400" />
-            <button onClick={() => { if (name.trim()) { onAddTarget(name.trim(), url.trim()); setName(''); setUrl(''); } }} disabled={!name.trim()}
-              className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-medium py-2 rounded-lg transition-colors">
-              + Add company
-            </button>
-          </div>
-        </div>
+            <div className="space-y-2">
+              {targets.map(t => (
+                <div key={t.id} className="flex items-center gap-2 bg-muted rounded-xl px-3 py-2 group">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground truncate">{t.company_name}</p>
+                    {t.website_url && <p className="text-[10px] text-muted-foreground truncate">{t.website_url}</p>}
+                  </div>
+                  <button
+                    onClick={() => onDeleteTarget(t.id)}
+                    className="text-muted-foreground hover:text-danger transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2 border-t border-border pt-3">
+              <Input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && name.trim()) { onAddTarget(name.trim(), url.trim()); setName(''); setUrl(''); } }}
+                placeholder="Competitor name"
+                icon={<Tag className="w-3.5 h-3.5" />}
+              />
+              <Input
+                type="url"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder="Website URL (optional)"
+              />
+              <Button
+                className="w-full"
+                onClick={() => { if (name.trim()) { onAddTarget(name.trim(), url.trim()); setName(''); setUrl(''); } }}
+                disabled={!name.trim()}
+              >
+                <Plus className="w-4 h-4" /> Add company
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="space-y-2">
-          <button onClick={() => onFetchAnalyze(false)} disabled={fetching || (!ownName && targets.length === 0)}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
-            {fetching ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Fetching & Analysing...</> : '🔍 Fetch & Analyse'}
-          </button>
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={() => onFetchAnalyze(false)}
+            disabled={fetching || (!ownName && targets.length === 0)}
+          >
+            {fetching ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Fetching &amp; Analysing…</>
+            ) : (
+              <><Search className="w-4 h-4" /> Fetch &amp; Analyse</>
+            )}
+          </Button>
           {analysis && !fetching && (
-            <button onClick={() => onFetchAnalyze(true)} disabled={fetching}
-              className="w-full text-xs font-medium text-slate-500 hover:text-indigo-600 py-1.5 transition-colors">
-              ↻ Force refresh
-            </button>
+            <Button
+              variant="ghost"
+              className="w-full text-xs"
+              onClick={() => onFetchAnalyze(true)}
+              disabled={fetching}
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Force refresh
+            </Button>
           )}
           {analysis?._fetched_at && (
-            <p className="text-[11px] text-slate-400 text-center">Last run: {new Date(analysis._fetched_at).toLocaleString()}</p>
+            <p className="text-[11px] text-muted-foreground text-center flex items-center justify-center gap-1">
+              <Clock className="w-3 h-3" /> Last run: {new Date(analysis._fetched_at).toLocaleString()}
+            </p>
           )}
         </div>
       </div>
@@ -509,117 +640,144 @@ function IntelligenceTab({ companyProfile, targets, analysis, fetching, onAddTar
         {fetching ? (
           <AnalysisSkeleton />
         ) : !analysis ? (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center text-slate-400">
-            <p className="text-4xl mb-3">📊</p>
-            <p className="text-sm">Add competitor companies and click Fetch & Analyse to unlock content intelligence.</p>
-          </div>
+          <Card>
+            <CardContent className="p-10 text-center">
+              <BarChart2 className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">Add competitor companies and click Fetch &amp; Analyse to unlock content intelligence.</p>
+            </CardContent>
+          </Card>
         ) : (
           <>
             {/* Timeline summary */}
-            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500 mb-2">Content Landscape</p>
-              <p className="text-sm text-indigo-900 leading-relaxed">{analysis.timeline_summary}</p>
-            </div>
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="p-5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-2">Content Landscape</p>
+                <p className="text-sm text-foreground leading-relaxed">{analysis.timeline_summary}</p>
+              </CardContent>
+            </Card>
 
             {/* Insights row */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Posting Cadence', value: analysis.own_cadence || '—' },
-                { label: 'Best Day',         value: analysis.best_day_guess || '—' },
-                { label: 'Themes Found',     value: `${(analysis.content_themes || []).length} topics` },
-              ].map(card => (
-                <div key={card.label} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">{card.label}</p>
-                  <p className="text-sm font-semibold text-slate-800">{card.value}</p>
-                </div>
-              ))}
+                { label: 'Posting Cadence', value: analysis.own_cadence || '—',                       icon: Clock },
+                { label: 'Best Day',        value: analysis.best_day_guess || '—',                    icon: Calendar },
+                { label: 'Themes Found',    value: `${(analysis.content_themes || []).length} topics`, icon: Tag },
+              ].map(card => {
+                const Icon = card.icon;
+                return (
+                  <Card key={card.label}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{card.label}</p>
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">{card.value}</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
 
             {/* Top themes */}
             {(analysis.content_themes || []).length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {analysis.content_themes.map((t, i) => (
-                  <span key={i} className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">{t}</span>
+                  <Badge key={i} variant="muted">{t}</Badge>
                 ))}
               </div>
             )}
 
             {/* Content gaps */}
             {(analysis.content_gaps || []).length > 0 && (
-              <div className="bg-amber-50 border border-amber-100 rounded-xl p-5">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-3">Content Gaps — Opportunities for you</p>
-                <ul className="space-y-1.5">
-                  {analysis.content_gaps.map((g, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-amber-900">
-                      <span className="text-amber-500 mt-0.5 flex-shrink-0">→</span>{g}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <Card className="border-warning/30 bg-warning-subtle">
+                <CardContent className="p-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-warning-foreground mb-3">Content Gaps — Opportunities for you</p>
+                  <ul className="space-y-1.5">
+                    {analysis.content_gaps.map((g, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                        <ArrowRight className="w-3.5 h-3.5 text-warning mt-0.5 flex-shrink-0" />{g}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
             )}
 
             {/* Competitor angles */}
             {(analysis.competitor_angles || []).length > 0 && (
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Competitor angles you haven't covered</p>
-                <ul className="space-y-1.5">
-                  {analysis.competitor_angles.map((a, i) => (
-                    <li key={i} className="text-sm text-slate-700 flex items-start gap-2">
-                      <span className="text-slate-400 mt-0.5 flex-shrink-0">•</span>{a}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <Card>
+                <CardContent className="p-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Competitor angles you haven&apos;t covered</p>
+                  <ul className="space-y-1.5">
+                    {analysis.competitor_angles.map((a, i) => (
+                      <li key={i} className="text-sm text-foreground flex items-start gap-2">
+                        <span className="text-muted-foreground mt-0.5 flex-shrink-0">•</span>{a}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
             )}
 
             {/* Hook Swipe File */}
             {(analysis.hook_swipe_file || []).length > 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <button onClick={() => setHookOpen(h => !h)}
-                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors">
-                  <span className="text-sm font-semibold text-slate-800">📌 Hook Swipe File <span className="text-slate-400 font-normal">({analysis.hook_swipe_file.length} hooks)</span></span>
-                  <svg className={`w-4 h-4 text-slate-400 transition-transform ${hookOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              <Card>
+                <button
+                  onClick={() => setHookOpen(h => !h)}
+                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/50 transition-colors rounded-2xl"
+                >
+                  <span className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Star className="w-4 h-4 text-primary" />
+                    Hook Swipe File
+                    <Badge variant="muted" size="sm">{analysis.hook_swipe_file.length} hooks</Badge>
+                  </span>
+                  {hookOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                 </button>
                 {hookOpen && (
-                  <div className="px-5 pb-5 grid sm:grid-cols-2 gap-3">
+                  <CardContent className="pt-0 pb-5 px-5 grid sm:grid-cols-2 gap-3">
                     {analysis.hook_swipe_file.map((h, i) => (
-                      <div key={i} className="border border-slate-100 rounded-lg p-3 hover:border-indigo-200 transition-colors group">
+                      <div key={i} className="border border-border rounded-xl p-3 hover:border-primary/40 transition-colors">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${HOOK_COLORS[h.pattern] ?? 'bg-slate-100 text-slate-600'}`}>{h.pattern}</span>
-                          <span className="text-[10px] text-slate-400 truncate">{h.company}</span>
+                          <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full', HOOK_COLORS[h.pattern] ?? 'bg-muted text-muted-foreground')}>{h.pattern}</span>
+                          <span className="text-[10px] text-muted-foreground truncate">{h.company}</span>
                         </div>
-                        <p className="text-sm font-medium text-slate-800 mb-1">"{h.hook}"</p>
-                        <p className="text-xs text-slate-400 italic">{h.why}</p>
+                        <p className="text-sm font-medium text-foreground mb-1">&ldquo;{h.hook}&rdquo;</p>
+                        <p className="text-xs text-muted-foreground italic">{h.why}</p>
                       </div>
                     ))}
-                  </div>
+                  </CardContent>
                 )}
-              </div>
+              </Card>
             )}
 
             {/* Post ideas */}
             {(analysis.post_ideas || []).length > 0 && (
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Post Ideas — {analysis.post_ideas.length} generated</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  Post Ideas — {analysis.post_ideas.length} generated
+                </p>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {analysis.post_ideas.map((idea, i) => (
-                    <div key={idea.id ?? i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 hover:border-indigo-200 transition-colors">
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ANGLE_COLORS[idea.angle] ?? 'bg-slate-100 text-slate-600'}`}>{idea.angle}</span>
-                            <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full truncate">{idea.suggested_format}</span>
+                    <Card key={idea.id ?? i} className="hover:border-primary/40 transition-colors">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                              <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full', ANGLE_COLORS[idea.angle] ?? 'bg-muted text-muted-foreground')}>{idea.angle}</span>
+                              <Badge variant="muted" size="sm">{idea.suggested_format}</Badge>
+                            </div>
+                            <p className="text-sm font-semibold text-foreground line-clamp-2">{idea.topic}</p>
                           </div>
-                          <p className="text-sm font-semibold text-slate-800 line-clamp-2">{idea.topic}</p>
+                          <Button size="sm" onClick={() => onSelectIdea(idea)} className="flex-shrink-0">
+                            <PenLine className="w-3.5 h-3.5" /> Draft
+                          </Button>
                         </div>
-                        <button onClick={() => onSelectIdea(idea)}
-                          className="flex-shrink-0 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors">
-                          ✍️ Draft
-                        </button>
-                      </div>
-                      <p className="text-xs text-slate-500 leading-relaxed mb-2 line-clamp-2">{idea.rationale}</p>
-                      {idea.hook && <p className="text-xs text-indigo-600 italic border-l-2 border-indigo-200 pl-2 line-clamp-1">"{idea.hook}"</p>}
-                    </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed mb-2 line-clamp-2">{idea.rationale}</p>
+                        {idea.hook && (
+                          <p className="text-xs text-primary italic border-l-2 border-primary/30 pl-2 line-clamp-1">&ldquo;{idea.hook}&rdquo;</p>
+                        )}
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               </div>
@@ -627,57 +785,78 @@ function IntelligenceTab({ companyProfile, targets, analysis, fetching, onAddTar
 
             {/* Competitor Post Feed */}
             {targetPosts.length > 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <button onClick={() => setFeedOpen(f => !f)}
-                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors">
-                  <span className="text-sm font-semibold text-slate-800">📰 Competitor Post Feed <span className="text-slate-400 font-normal">({targetPosts.length} posts)</span></span>
-                  <svg className={`w-4 h-4 text-slate-400 transition-transform ${feedOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              <Card>
+                <button
+                  onClick={() => setFeedOpen(f => !f)}
+                  className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/50 transition-colors rounded-2xl"
+                >
+                  <span className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-primary" />
+                    Competitor Post Feed
+                    <Badge variant="muted" size="sm">{targetPosts.length} posts</Badge>
+                  </span>
+                  {feedOpen ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
                 </button>
                 {feedOpen && (
-                  <div className="px-5 pb-5 space-y-4">
+                  <CardContent className="pt-0 pb-5 px-5 space-y-4">
                     {targetPosts.map(post => {
                       const isExpanded = expandedPosts.has(post.id);
                       const text = post.content ?? post.title ?? '';
                       const remix = remixResults[post.id];
                       return (
-                        <div key={post.id} className="border border-slate-100 rounded-xl p-4">
+                        <div key={post.id} className="border border-border rounded-xl p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{post.company_name}</span>
-                            {post.published_date && <span className="text-[10px] text-slate-400">{post.published_date}</span>}
+                            <Badge variant="secondary" size="sm">{post.company_name}</Badge>
+                            {post.published_date && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <Clock className="w-3 h-3" />{post.published_date}
+                              </span>
+                            )}
                           </div>
-                          {post.title && <p className="text-sm font-medium text-slate-800 mb-1">{post.title}</p>}
-                          <p className="text-xs text-slate-600 leading-relaxed">
+                          {post.title && <p className="text-sm font-medium text-foreground mb-1">{post.title}</p>}
+                          <p className="text-xs text-muted-foreground leading-relaxed">
                             {isExpanded ? text : text.slice(0, 220)}{!isExpanded && text.length > 220 && '…'}
                           </p>
                           {text.length > 220 && (
-                            <button onClick={() => setExpandedPosts(s => { const n = new Set(s); n.has(post.id) ? n.delete(post.id) : n.add(post.id); return n; })}
-                              className="text-xs text-indigo-500 hover:text-indigo-700 mt-1 underline">
+                            <button
+                              onClick={() => setExpandedPosts(s => { const n = new Set(s); n.has(post.id) ? n.delete(post.id) : n.add(post.id); return n; })}
+                              className="text-xs text-primary hover:text-primary/80 mt-1 underline"
+                            >
                               {isExpanded ? 'Show less' : 'Read more'}
                             </button>
                           )}
                           <div className="mt-3">
-                            <button onClick={() => handleRemix(post)} disabled={remixing === post.id}
-                              className="text-xs font-medium bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50">
-                              {remixing === post.id ? <><div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />Remixing…</> : '🔄 Remix for my offer'}
-                            </button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRemix(post)}
+                              disabled={remixing === post.id}
+                            >
+                              {remixing === post.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                              {remixing === post.id ? 'Remixing…' : 'Remix for my offer'}
+                            </Button>
                           </div>
                           {remix && (
-                            <div className="mt-3 bg-indigo-50 border border-indigo-100 rounded-lg p-4 animate-fade-in">
-                              <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500 mb-2">Remixed for your company</p>
-                              <p className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed mb-3">{remix.remixed_content}</p>
-                              <p className="text-[11px] text-slate-500 italic mb-1">Format kept: {remix.format_kept}</p>
-                              <p className="text-[11px] text-slate-400 mb-3">{remix.what_changed}</p>
-                              <div className="flex gap-2">
-                                <button onClick={() => { navigator.clipboard.writeText(remix.remixed_content); toast('Copied to clipboard'); }} className="text-xs font-medium text-slate-600 border border-slate-200 hover:border-slate-300 px-3 py-1 rounded-lg transition-colors">📋 Copy</button>
-                              </div>
+                            <div className="mt-3 bg-primary/5 border border-primary/20 rounded-xl p-4 animate-fade-in">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-primary mb-2">Remixed for your company</p>
+                              <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed mb-3">{remix.remixed_content}</p>
+                              <p className="text-[11px] text-muted-foreground italic mb-1">Format kept: {remix.format_kept}</p>
+                              <p className="text-[11px] text-muted-foreground mb-3">{remix.what_changed}</p>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { navigator.clipboard.writeText(remix.remixed_content); toast('Copied to clipboard'); }}
+                              >
+                                <Copy className="w-3.5 h-3.5" /> Copy
+                              </Button>
                             </div>
                           )}
                         </div>
                       );
                     })}
-                  </div>
+                  </CardContent>
                 )}
-              </div>
+              </Card>
             )}
           </>
         )}
@@ -713,14 +892,13 @@ function DraftTab({ selectedIdea, onClearIdea, onPublished, toast }: DraftTabPro
   const historyRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-save draft with debounce
+  // Auto-save draft with debounce (2.5s)
   useEffect(() => {
     if (!selectedIdea || !draftContent) return;
     setSaveStatus('saving');
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
-        // Optimistic — update idea draft in background
         await fetch(`/api/v2/linkedin/ideas/${selectedIdea.id}/draft/start`, { method: 'POST' });
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
@@ -803,198 +981,274 @@ function DraftTab({ selectedIdea, onClearIdea, onPublished, toast }: DraftTabPro
   }
 
   const verdictMeta = postScore ? (
-    postScore.verdict === 'strong_post' ? { label: 'Strong Post', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' } :
-    postScore.verdict === 'ready_to_post' ? { label: 'Ready to Post', cls: 'text-indigo-700 bg-indigo-50 border-indigo-200' } :
-    { label: 'Needs Work', cls: 'text-amber-700 bg-amber-50 border-amber-200' }
+    postScore.verdict === 'strong_post'   ? { label: 'Strong Post',   variant: 'success'  as const } :
+    postScore.verdict === 'ready_to_post' ? { label: 'Ready to Post', variant: 'default'  as const } :
+    { label: 'Needs Work', variant: 'warning' as const }
   ) : null;
 
-  const scoreBarColor = (n: number) => n >= 7 ? 'bg-emerald-500' : n >= 5 ? 'bg-amber-400' : 'bg-red-400';
+  const scoreBarColor = (n: number) => n >= 7 ? 'bg-success' : n >= 5 ? 'bg-warning' : 'bg-danger';
+  const charPct = Math.min(100, Math.round((draftContent.length / 3000) * 100));
 
   return (
     <div className="grid lg:grid-cols-2 gap-6">
-      {/* Left: Starting point + chat */}
+      {/* Left: Idea panel + refine chat */}
       <div className="space-y-4">
         {selectedIdea ? (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Starting from idea</p>
-              <button onClick={onClearIdea} className="text-xs text-slate-400 hover:text-slate-600 underline">Clear</button>
-            </div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ANGLE_COLORS[selectedIdea.angle] ?? 'bg-slate-100 text-slate-600'}`}>{selectedIdea.angle}</span>
-              <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{selectedIdea.suggested_format}</span>
-            </div>
-            <p className="text-sm font-semibold text-slate-800 mb-1">{selectedIdea.topic}</p>
-            {selectedIdea.hook && <p className="text-xs text-indigo-600 italic border-l-2 border-indigo-200 pl-2 mb-2">"{selectedIdea.hook}"</p>}
-            <p className="text-xs text-slate-500 leading-relaxed">{selectedIdea.rationale}</p>
-          </div>
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Lightbulb className="w-3.5 h-3.5 text-primary" /> Starting from idea
+                </p>
+                <Button variant="ghost" size="sm" onClick={onClearIdea}><X className="w-3.5 h-3.5" /> Clear</Button>
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full', ANGLE_COLORS[selectedIdea.angle] ?? 'bg-muted text-muted-foreground')}>{selectedIdea.angle}</span>
+                <Badge variant="muted" size="sm">{selectedIdea.suggested_format}</Badge>
+              </div>
+              <p className="text-sm font-semibold text-foreground mb-1">{selectedIdea.topic}</p>
+              {selectedIdea.hook && (
+                <p className="text-xs text-primary italic border-l-2 border-primary/30 pl-2 mb-2">&ldquo;{selectedIdea.hook}&rdquo;</p>
+              )}
+              <p className="text-xs text-muted-foreground leading-relaxed">{selectedIdea.rationale}</p>
+            </CardContent>
+          </Card>
         ) : (
-          <div className="bg-white rounded-xl border border-dashed border-slate-300 p-6 text-center">
-            <p className="text-slate-400 text-sm mb-1">No idea selected</p>
-            <p className="text-xs text-slate-400">Pick an idea from the Intelligence tab, or type freely in the draft area.</p>
-          </div>
+          <Card className="border-dashed">
+            <CardContent className="p-6 text-center">
+              <Lightbulb className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-muted-foreground text-sm mb-1">No idea selected</p>
+              <p className="text-xs text-muted-foreground">Pick an idea from the Intelligence tab, or type freely in the draft area.</p>
+            </CardContent>
+          </Card>
         )}
 
-        <button onClick={handleStartDraft} disabled={draftLoading || !selectedIdea}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium py-3 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm">
-          {draftLoading ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Generating draft…</> : '✨ Generate initial draft'}
-        </button>
+        <Button
+          className="w-full"
+          size="lg"
+          onClick={handleStartDraft}
+          disabled={draftLoading || !selectedIdea}
+        >
+          {draftLoading ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> Generating draft…</>
+          ) : (
+            <><Sparkles className="w-4 h-4" /> Generate initial draft</>
+          )}
+        </Button>
 
         {draftContent && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Refine with AI</p>
-            {draftHistory.length > 0 && (
-              <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
-                {draftHistory.map((h, i) => (
-                  <div key={i} className={`px-3 py-2 rounded-lg text-xs ${h.role === 'user' ? 'bg-slate-100 text-slate-700 ml-8' : 'bg-indigo-50 border border-indigo-100 text-slate-700 mr-8'}`}>
-                    <span className="font-medium text-[10px] uppercase tracking-wider text-slate-400 block mb-0.5">{h.role === 'user' ? 'You' : 'AI'}</span>
-                    <span className="whitespace-pre-wrap">{h.content.length > 120 ? h.content.slice(0, 120) + '…' : h.content}</span>
-                  </div>
-                ))}
-                <div ref={historyRef} />
+          <Card>
+            <CardContent className="p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-primary" /> Refine with AI
+              </p>
+              {draftHistory.length > 0 && (
+                <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+                  {draftHistory.map((h, i) => (
+                    <div key={i} className={cn(
+                      'px-3 py-2 rounded-lg text-xs',
+                      h.role === 'user' ? 'bg-muted text-foreground ml-8' : 'bg-primary/5 border border-primary/20 text-foreground mr-8'
+                    )}>
+                      <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground block mb-0.5">{h.role === 'user' ? 'You' : 'AI'}</span>
+                      <span className="whitespace-pre-wrap">{h.content.length > 120 ? h.content.slice(0, 120) + '…' : h.content}</span>
+                    </div>
+                  ))}
+                  <div ref={historyRef} />
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  value={draftMessage}
+                  onChange={e => setDraftMessage(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefine(); } }}
+                  placeholder="Make it shorter, add a stat, punchier hook…"
+                  disabled={refineLoading}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleRefine}
+                  disabled={!draftMessage.trim() || refineLoading}
+                >
+                  {refineLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
               </div>
-            )}
-            <div className="flex gap-2">
-              <input type="text" value={draftMessage} onChange={e => setDraftMessage(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefine(); } }}
-                placeholder="Make it shorter, add a stat, punchier hook…"
-                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400"
-                disabled={refineLoading} />
-              <button onClick={handleRefine} disabled={!draftMessage.trim() || refineLoading}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium rounded-lg transition-colors">
-                {refineLoading ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : 'Send'}
-              </button>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         )}
       </div>
 
       {/* Right: Draft preview + tools */}
       <div className="space-y-4">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Draft</p>
-            <div className="flex items-center gap-2">
-              {saveStatus === 'saving' && <span className="text-[10px] text-slate-400 animate-pulse">Saving…</span>}
-              {saveStatus === 'saved' && <span className="text-[10px] text-emerald-600">✓ Saved</span>}
-              {draftContent && (
-                <span className={`text-[10px] font-medium px-2 py-0.5 rounded border ${charColor(draftContent.length)}`}>{draftContent.length} chars</span>
-              )}
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Draft</p>
+              <div className="flex items-center gap-2">
+                {saveStatus === 'saving' && (
+                  <Badge variant="muted" size="sm"><Loader2 className="w-3 h-3 animate-spin" /> Saving…</Badge>
+                )}
+                {saveStatus === 'saved' && (
+                  <Badge variant="success" size="sm"><Check className="w-3 h-3" /> Saved</Badge>
+                )}
+                {draftContent && (
+                  <Badge variant={charCountVariant(draftContent.length)} size="sm">{draftContent.length} chars</Badge>
+                )}
+              </div>
             </div>
-          </div>
-          <textarea value={draftContent} onChange={e => { setDraftContent(e.target.value); setPostScore(null); }}
-            placeholder="Your draft will appear here. Generate from an idea, or type freely…"
-            rows={12}
-            className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none leading-relaxed placeholder:text-slate-300" />
-        </div>
+            {draftContent && (
+              <div className="mb-3">
+                <Progress value={charPct} indicatorClassName={charProgressColor(draftContent.length)} className="h-1" />
+              </div>
+            )}
+            <Textarea
+              value={draftContent}
+              onChange={e => { setDraftContent(e.target.value); setPostScore(null); }}
+              placeholder="Your draft will appear here. Generate from an idea, or type freely…"
+              rows={12}
+              className="resize-none leading-relaxed"
+            />
+          </CardContent>
+        </Card>
 
         {draftContent && (
           <div className="flex flex-wrap gap-2">
-            <button onClick={handleScore} disabled={scoring}
-              className="text-xs font-medium bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50">
-              {scoring ? <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" /> : '📊'} Score post
-            </button>
-            <button onClick={handleBuildThread} disabled={buildingThread}
-              className="text-xs font-medium bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50">
-              {buildingThread ? <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" /> : '🧵'} Build thread
-            </button>
-            <button onClick={handleFirstComment} disabled={generatingComment}
-              className="text-xs font-medium bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50">
-              {generatingComment ? <div className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" /> : '💬'} First comment
-            </button>
-            <button onClick={handlePublish} disabled={publishing || !selectedIdea}
+            <Button variant="outline" size="sm" onClick={handleScore} disabled={scoring}>
+              {scoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BarChart2 className="w-3.5 h-3.5" />}
+              Score post
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleBuildThread} disabled={buildingThread}>
+              {buildingThread ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              Build thread
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleFirstComment} disabled={generatingComment}>
+              {generatingComment ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MessageSquare className="w-3.5 h-3.5" />}
+              First comment
+            </Button>
+            <Button
+              className="ml-auto"
+              variant="success"
+              size="sm"
+              onClick={handlePublish}
+              disabled={publishing || !selectedIdea}
               title={!selectedIdea ? 'Select an idea first' : undefined}
-              className="ml-auto text-xs font-medium bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5">
-              {publishing ? <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : '💾'} Save as post
-            </button>
+            >
+              {publishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Save as post
+            </Button>
           </div>
         )}
 
         {/* Post Score */}
         {postScore && verdictMeta && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 animate-fade-in">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Post Score</p>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-bold text-slate-900">{postScore.overall}</span>
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${verdictMeta.cls}`}>{verdictMeta.label}</span>
-              </div>
-            </div>
-            <div className="space-y-2.5 mb-4">
-              {Object.entries(postScore.scores).map(([key, val]) => (
-                <div key={key}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-slate-500 capitalize">{key.replace(/_/g, ' ')}</span>
-                    <span className="text-xs font-medium text-slate-700">{val}/10</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor(val)}`} style={{ width: `${val * 10}%` }} />
-                  </div>
+          <Card className="animate-fade-in">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Post Score</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-foreground">{postScore.overall}</span>
+                  <Badge variant={verdictMeta.variant}>{verdictMeta.label}</Badge>
                 </div>
-              ))}
-            </div>
-            {postScore.suggestions.length > 0 && (
-              <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 mb-2">Improvements</p>
-                <ul className="space-y-1">
-                  {postScore.suggestions.map((s, i) => (
-                    <li key={i} className="text-xs text-amber-800 flex items-start gap-1.5"><span className="text-amber-500 mt-0.5 flex-shrink-0">•</span>{s}</li>
-                  ))}
-                </ul>
-                <button onClick={() => setDraftMessage(`Improve based on this feedback: ${postScore.suggestions.join('. ')}`)}
-                  className="mt-2 text-xs font-medium text-amber-700 underline hover:text-amber-900">
-                  Apply suggestions in chat →
-                </button>
               </div>
-            )}
-          </div>
+              <div className="space-y-2.5 mb-4">
+                {Object.entries(postScore.scores).map(([key, val]) => (
+                  <div key={key}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground capitalize">{key.replace(/_/g, ' ')}</span>
+                      <span className="text-xs font-medium text-foreground">{val}/10</span>
+                    </div>
+                    <Progress value={val * 10} indicatorClassName={scoreBarColor(val)} />
+                  </div>
+                ))}
+              </div>
+              {postScore.suggestions.length > 0 && (
+                <div className="bg-warning-subtle border border-warning/30 rounded-xl p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-warning-foreground mb-2">Improvements</p>
+                  <ul className="space-y-1">
+                    {postScore.suggestions.map((s, i) => (
+                      <li key={i} className="text-xs text-foreground flex items-start gap-1.5">
+                        <span className="text-warning mt-0.5 flex-shrink-0">•</span>{s}
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="mt-2 text-warning-foreground hover:text-foreground p-0 h-auto"
+                    onClick={() => setDraftMessage(`Improve based on this feedback: ${postScore.suggestions.join('. ')}`)}
+                  >
+                    Apply suggestions in chat <ArrowRight className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {/* Thread Builder */}
         {thread && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 animate-fade-in">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Thread ({thread.total_parts} parts)</p>
-              <button onClick={() => {
-                navigator.clipboard.writeText(thread.thread.map(p => p.content).join('\n\n---\n\n'));
-                setCopiedThread(true); setTimeout(() => setCopiedThread(false), 2000);
-              }} className="text-xs font-medium text-slate-500 border border-slate-200 hover:border-slate-300 px-3 py-1 rounded-lg transition-colors">
-                {copiedThread ? '✓ Copied' : '📋 Copy all'}
-              </button>
-            </div>
-            <div className="space-y-3">
-              {thread.thread.map(part => (
-                <div key={part.part} className="bg-slate-50 rounded-lg p-3 flex items-start gap-3 group">
-                  <span className="text-xs font-bold text-slate-400 flex-shrink-0 pt-0.5 w-8">{part.part}/{thread.total_parts}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-800 leading-relaxed">{part.content}</p>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${charColor(part.char_count)}`}>{part.char_count} chars</span>
-                      <button onClick={() => { navigator.clipboard.writeText(part.content); toast('Part copied'); }} className="text-[10px] text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity">Copy</button>
+          <Card className="animate-fade-in">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-primary" /> Thread ({thread.total_parts} parts)
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    navigator.clipboard.writeText(thread.thread.map(p => p.content).join('\n\n---\n\n'));
+                    setCopiedThread(true); setTimeout(() => setCopiedThread(false), 2000);
+                  }}
+                >
+                  {copiedThread ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy all</>}
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {thread.thread.map(part => (
+                  <div key={part.part} className="bg-muted rounded-xl p-3 flex items-start gap-3 group">
+                    <span className="text-xs font-bold text-muted-foreground flex-shrink-0 pt-0.5 w-8">{part.part}/{thread.total_parts}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground leading-relaxed">{part.content}</p>
+                      <div className="flex items-center justify-between mt-1.5">
+                        <Badge variant={charCountVariant(part.char_count)} size="sm">{part.char_count} chars</Badge>
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(part.content); toast('Part copied'); }}
+                          className="text-[10px] text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          Copy
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* First Comment */}
         {firstComment && (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 animate-fade-in">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">First Comment</p>
-                <p className="text-[10px] text-slate-400">Pin this immediately after publishing for reach</p>
+          <Card className="animate-fade-in">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-primary" /> First Comment
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">Pin this immediately after publishing for reach</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { navigator.clipboard.writeText(firstComment.comment); toast('Comment copied'); }}
+                >
+                  <Copy className="w-3.5 h-3.5" /> Copy
+                </Button>
               </div>
-              <button onClick={() => { navigator.clipboard.writeText(firstComment.comment); toast('Comment copied'); }}
-                className="text-xs font-medium text-slate-600 border border-slate-200 hover:border-slate-300 px-3 py-1 rounded-lg transition-colors">
-                📋 Copy
-              </button>
-            </div>
-            <p className="text-sm text-slate-800 leading-relaxed mb-2">{firstComment.comment}</p>
-            <p className="text-xs text-slate-400 italic">{firstComment.rationale}</p>
-          </div>
+              <p className="text-sm text-foreground leading-relaxed mb-2">{firstComment.comment}</p>
+              <p className="text-xs text-muted-foreground italic">{firstComment.rationale}</p>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
@@ -1075,7 +1329,6 @@ function PostsTab({ posts, loading, error, generating, selectedPersona, analytic
   }
 
   function handleAssignIdea(ideaId: string, date: string) {
-    // Find a drafted idea post and schedule it — or just toast
     toast(`Idea planned for ${new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, 'info');
   }
 
@@ -1085,38 +1338,51 @@ function PostsTab({ posts, loading, error, generating, selectedPersona, analytic
   return (
     <div>
       {/* Controls bar */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Writing persona</p>
-            <div className="flex items-center gap-2 flex-wrap">
-              {PERSONAS.map(p => (
-                <button key={p.value} onClick={() => onPersonaChange(p.value)} title={p.desc}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-                    selectedPersona === p.value ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                  }`}>
-                  <span>{p.icon}</span><span>{p.label}</span>
-                </button>
-              ))}
+      <Card className="mb-5">
+        <CardContent className="p-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Writing persona</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {PERSONAS.map(p => {
+                  const Icon = p.icon;
+                  return (
+                    <Button
+                      key={p.value}
+                      variant={selectedPersona === p.value ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => onPersonaChange(p.value)}
+                      title={p.desc}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {p.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex gap-2 flex-shrink-0">
+              <Button variant="outline" onClick={onExportBrief}>
+                <Eye className="w-4 h-4" /> Export brief
+              </Button>
+              <Button onClick={onGenerate} disabled={generating}>
+                {generating ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</>
+                ) : (
+                  <><Sparkles className="w-4 h-4" /> Generate posts</>
+                )}
+              </Button>
             </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button onClick={onExportBrief} className="text-sm font-medium text-slate-600 border border-slate-200 hover:border-slate-300 px-3 py-2.5 rounded-lg transition-colors flex items-center gap-1.5">
-              📄 Export brief
-            </button>
-            <button onClick={onGenerate} disabled={generating}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-4 py-2.5 rounded-lg transition-all shadow-sm flex items-center gap-2 text-sm">
-              {generating ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Generating…</> : '✨ Generate posts'}
-            </button>
-          </div>
-        </div>
 
-        {/* Analytics bar */}
-        <AnalyticsBar analytics={analytics} />
-      </div>
+          {/* Analytics bar */}
+          <AnalyticsBar analytics={analytics} />
+        </CardContent>
+      </Card>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-5 flex items-center justify-between">
+        <div className="bg-danger-subtle border border-danger/20 text-danger text-sm rounded-2xl px-4 py-3 mb-5 flex items-center gap-2">
+          <X className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -1124,18 +1390,22 @@ function PostsTab({ posts, loading, error, generating, selectedPersona, analytic
       {/* Calendar toggle */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowCalendar(c => !c)}
-            className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${showCalendar ? 'bg-slate-800 text-white border-slate-800' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
-            {showCalendar ? '📅 Hide calendar' : '📅 Show calendar'}
-          </button>
-          <span className="text-xs text-slate-400">{scheduledPosts.length} scheduled</span>
+          <Button
+            variant={showCalendar ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setShowCalendar(c => !c)}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            {showCalendar ? 'Hide calendar' : 'Show calendar'}
+          </Button>
+          <Badge variant="muted" size="sm">{scheduledPosts.length} scheduled</Badge>
         </div>
-        {posts.length > 0 && <span className="text-xs text-slate-400">{posts.length} total posts</span>}
+        {posts.length > 0 && <span className="text-xs text-muted-foreground">{posts.length} total posts</span>}
       </div>
 
       {/* Calendar */}
       {showCalendar && (
-        <div className="mb-6">
+        <div className="mb-6 animate-fade-in">
           <ContentCalendar
             scheduledPosts={scheduledPosts}
             ideas={ideas}
@@ -1148,77 +1418,106 @@ function PostsTab({ posts, loading, error, generating, selectedPersona, analytic
       {/* Filter + search bar */}
       {posts.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap mb-4">
-          {/* Search */}
-          <div className="relative flex-1 min-w-[160px]">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search posts…"
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 placeholder:text-slate-400" />
+          <div className="flex-1 min-w-[160px]">
+            <Input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search posts…"
+              icon={<Search className="w-3.5 h-3.5" />}
+            />
           </div>
-          {/* Strategy filter */}
-          <select value={filterStrategy} onChange={e => setFilterStrategy(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700">
+          <Select value={filterStrategy} onChange={e => setFilterStrategy(e.target.value)} className="w-auto">
             <option value="all">All types</option>
             {strategies.map(s => <option key={s} value={s}>{STRATEGY_META[s]?.label ?? s}</option>)}
-          </select>
-          {/* Status filter */}
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700">
+          </Select>
+          <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-auto">
             <option value="all">All statuses</option>
             <option value="draft">Draft</option>
             <option value="selected">Selected</option>
             <option value="posted">Posted</option>
-          </select>
-          {/* Sort */}
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700">
+          </Select>
+          <Select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} className="w-auto">
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="longest">Longest first</option>
             <option value="shortest">Shortest first</option>
-          </select>
+          </Select>
           {(filterStrategy !== 'all' || filterStatus !== 'all' || searchQuery) && (
-            <button onClick={() => { setFilterStrategy('all'); setFilterStatus('all'); setSearchQuery(''); }} className="text-xs text-slate-400 hover:text-slate-600 underline">Clear filters</button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setFilterStrategy('all'); setFilterStatus('all'); setSearchQuery(''); }}
+            >
+              <X className="w-3.5 h-3.5" /> Clear filters
+            </Button>
           )}
         </div>
       )}
 
       {/* Bulk action bar */}
       {selectedIds.size > 0 && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3 animate-fade-in">
-          <span className="text-sm font-medium text-indigo-700">{selectedIds.size} selected</span>
-          <button onClick={handleBulkCopy} className="text-xs font-medium text-indigo-600 bg-white border border-indigo-200 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">📋 Copy all</button>
-          <button onClick={handleBulkDelete} className="text-xs font-medium text-red-600 bg-white border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors">🗑️ Delete all</button>
-          <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-xs text-slate-400 hover:text-slate-600 underline">Deselect</button>
+        <div className="bg-primary/5 border border-primary/20 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3 animate-fade-in">
+          <Badge variant="default">{selectedIds.size} selected</Badge>
+          <Button size="sm" variant="outline" onClick={handleBulkCopy}>
+            <Copy className="w-3.5 h-3.5" /> Copy all
+          </Button>
+          <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
+            <Trash2 className="w-3.5 h-3.5" /> Delete all
+          </Button>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedIds(new Set())}>
+            Deselect
+          </Button>
         </div>
       )}
 
       {loading ? (
         <div className="space-y-4">{[...Array(3)].map((_, i) => <PostCardSkeleton key={i} />)}</div>
       ) : filtered.length === 0 && posts.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-10 text-center max-w-lg mx-auto">
-          <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg>
-          </div>
-          <h3 className="text-base font-semibold text-slate-900 mb-2">No posts yet</h3>
-          <p className="text-sm text-slate-500 leading-relaxed mb-6">Generate your first batch using your market intelligence and selected persona.</p>
-          <button onClick={onGenerate} disabled={generating} className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-6 py-2.5 rounded-lg transition-colors mx-auto flex items-center gap-2">
-            {generating ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />Generating…</> : '✨ Generate posts'}
-          </button>
-        </div>
+        <Card>
+          <CardContent className="p-10 text-center max-w-lg mx-auto">
+            <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Linkedin className="w-6 h-6 text-primary" />
+            </div>
+            <h3 className="text-base font-semibold text-foreground mb-2">No posts yet</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+              Generate your first batch using your market intelligence and selected persona.
+            </p>
+            <Button onClick={onGenerate} disabled={generating} size="lg">
+              {generating ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Generating…</>
+              ) : (
+                <><Sparkles className="w-4 h-4" /> Generate posts</>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
-          <p className="text-slate-400 text-sm">No posts match your filters.</p>
-          <button onClick={() => { setFilterStrategy('all'); setFilterStatus('all'); setSearchQuery(''); }} className="mt-2 text-xs text-indigo-500 hover:text-indigo-700 underline">Clear filters</button>
-        </div>
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-muted-foreground text-sm mb-2">No posts match your filters.</p>
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => { setFilterStrategy('all'); setFilterStatus('all'); setSearchQuery(''); }}
+            >
+              Clear filters
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <>
           {/* Select all row */}
           <div className="flex items-center gap-2 mb-3 px-1">
-            <input type="checkbox" checked={allSelected} onChange={() => {
-              if (allSelected) setSelectedIds(new Set());
-              else setSelectedIds(new Set(filtered.map(p => p.id)));
-            }} className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
-            <span className="text-xs text-slate-500">Select all ({filtered.length})</span>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() => {
+                if (allSelected) setSelectedIds(new Set());
+                else setSelectedIds(new Set(filtered.map(p => p.id)));
+              }}
+              className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary cursor-pointer"
+            />
+            <span className="text-xs text-muted-foreground">Select all ({filtered.length})</span>
           </div>
           <div className="space-y-4">
             {filtered.map(post => (
@@ -1231,9 +1530,12 @@ function PostsTab({ posts, loading, error, generating, selectedPersona, analytic
                   isSelected={selectedIds.has(post.id)}
                   onToggleSelect={() => toggleSelect(post.id)}
                   onToggleRefine={() => setActiveRefineId(prev => prev === post.id ? null : post.id)}
-                  onRefineUpdate={(content, history) => { setEditContents(prev => ({ ...prev, [post.id]: content })); setRefineHistories(prev => ({ ...prev, [post.id]: history })); }}
+                  onRefineUpdate={(content, history) => {
+                    setEditContents(prev => ({ ...prev, [post.id]: content }));
+                    setRefineHistories(prev => ({ ...prev, [post.id]: history }));
+                  }}
                   onApplyRefine={(id, c) => {
-                    setPosts(id, c);
+                    setLocalContent(id, c);
                     setEditContents(prev => { const n = { ...prev }; delete n[id]; return n; });
                     setRefineHistories(prev => ({ ...prev, [id]: [] }));
                     setActiveRefineId(null);
@@ -1252,9 +1554,7 @@ function PostsTab({ posts, loading, error, generating, selectedPersona, analytic
     </div>
   );
 
-  function setPosts(id: string, content: string) {
-    // This is called from within PostsTab — we close over the parent setter via onStatusChange pattern
-    // The actual posts state is in the parent; we update editContents here
+  function setLocalContent(id: string, content: string) {
     setEditContents(prev => ({ ...prev, [id]: content }));
   }
 }
@@ -1392,40 +1692,43 @@ export default function LinkedInPage() {
 
   const ideas = analysis?.post_ideas ?? [];
 
-  const TABS = [
-    { id: 'intelligence' as const, label: '📊 Intelligence' },
-    { id: 'draft' as const,        label: '✍️ Draft' },
-    { id: 'posts' as const,        label: `📝 Posts${posts.length > 0 ? ` (${posts.length})` : ''}` },
-  ];
-
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       <ToastContainer toasts={toasts} />
 
-      {/* Page header */}
-      <div className="bg-white border-b border-slate-200 px-8 py-5">
+      {/* Sticky header */}
+      <div className="sticky top-0 z-20 bg-card border-b border-border px-8 py-4">
         <div className="max-w-5xl mx-auto">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">LinkedIn Intelligence Hub</h1>
-              <p className="text-slate-500 text-sm mt-0.5">Track competitors, analyse the content landscape, draft with AI, and build your publishing pipeline</p>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center">
+                <Linkedin className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-foreground leading-tight">LinkedIn Intelligence Hub</h1>
+                <p className="text-xs text-muted-foreground">Track competitors · draft with AI · build your pipeline</p>
+              </div>
             </div>
-          </div>
-          {/* Tab bar */}
-          <div className="flex items-center gap-1 mt-4 bg-slate-100 p-1 rounded-lg w-fit">
-            {TABS.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`text-sm font-medium px-4 py-2 rounded-md transition-all ${
-                  activeTab === tab.id ? 'bg-white text-slate-900 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'
-                }`}>
-                {tab.label}
-              </button>
-            ))}
+
+            <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>
+              <TabsList>
+                <TabsTrigger value="intelligence">
+                  <BarChart2 className="w-4 h-4" /> Intelligence
+                </TabsTrigger>
+                <TabsTrigger value="draft">
+                  <PenLine className="w-4 h-4" /> Draft
+                </TabsTrigger>
+                <TabsTrigger value="posts">
+                  <Sparkles className="w-4 h-4" />
+                  Posts{posts.length > 0 ? ` (${posts.length})` : ''}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-8 py-8">
+      <div className="max-w-5xl mx-auto px-8 py-8 animate-fade-in">
         {activeTab === 'intelligence' && (
           <IntelligenceTab
             companyProfile={companyProfile}
