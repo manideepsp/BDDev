@@ -889,3 +889,108 @@ export async function updateLinkedInPost(postId: string, data: { planned_date?: 
 export async function exportContentBrief(): Promise<ContentBrief> {
   return request('/api/v2/linkedin/export-brief');
 }
+
+// ── Contacts DB ───────────────────────────────────────────────────────────────
+
+export interface ContactWithContext extends PipelineProspect {
+  company_name: string;
+  pipeline_status: string;
+  company_url?: string;
+  pipeline_created_at?: string;
+  engagement_score?: number;
+  industry?: string;
+}
+
+export async function getAllContacts(): Promise<ContactWithContext[]> {
+  return request('/api/v2/contacts');
+}
+
+export async function updateContactStatus(prospectId: string, status: string): Promise<{ ok: boolean }> {
+  return request(`/api/v2/contacts/${prospectId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+}
+
+// ── Outreach Tracker ──────────────────────────────────────────────────────────
+
+export interface EmailWithContext extends OutreachEmail {
+  prospect_name?: string;
+  prospect_title?: string;
+  company_name?: string;
+  prospect_status?: string;
+  sent_at?: string;
+  replied_at?: string;
+  email_notes?: string;
+  pipeline_id: string;
+}
+
+export async function getAllOutreach(): Promise<EmailWithContext[]> {
+  return request('/api/v2/outreach');
+}
+
+export async function updateOutreachTracking(emailId: string, data: { sent_at?: string; replied_at?: string; email_notes?: string }): Promise<{ ok: boolean }> {
+  return request(`/api/v2/outreach/${emailId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+// ── BD Playbook ───────────────────────────────────────────────────────────────
+
+export interface BattleCard {
+  industry: string;
+  companies: string[];
+  key_pain_points: string[];
+  objections: { objection: string; response: string }[];
+  talk_tracks: string[];
+  winning_angle: string;
+}
+
+export interface PlaybookData {
+  battle_cards: BattleCard[];
+  total_companies: number;
+  generated_at: string;
+  message?: string;
+}
+
+export async function getPlaybook(): Promise<PlaybookData> {
+  return request('/api/v2/playbook');
+}
+
+// ── Morning Brief ─────────────────────────────────────────────────────────────
+
+export interface HotProspect {
+  name: string;
+  company: string;
+  score: number;
+  reason: string;
+}
+
+export interface PipelineHealthItem {
+  label: string;
+  value: string | number;
+  status: 'good' | 'warning' | 'neutral';
+}
+
+export interface RecommendedAction {
+  priority: 'high' | 'medium' | 'low';
+  action: string;
+  company?: string | null;
+}
+
+export interface BriefData {
+  date: string;
+  executive_summary: string;
+  hot_prospects: HotProspect[];
+  pipeline_health: PipelineHealthItem[];
+  recommended_actions: RecommendedAction[];
+  linkedin_tip: string;
+  generated_at: string;
+}
+
+export async function getMorningBrief(): Promise<BriefData> {
+  return request('/api/v2/brief');
+}

@@ -180,30 +180,26 @@ _LINKEDIN_POST_EXTRA_COLUMNS = {
     "post_notes": "TEXT",
 }
 
+_EMAIL_EXTRA_COLUMNS = {
+    "sent_at": "TEXT",
+    "replied_at": "TEXT",
+    "email_notes": "TEXT",
+}
+
 def _ensure_columns(conn):
-    existing_pipeline = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
-    for col, coltype in _PIPELINE_EXTRA_COLUMNS.items():
-        if col in existing_pipeline:
-            continue
-        if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
-            raise ValueError(f"Unsafe column definition: {col} {coltype}")
-        conn.execute(f"ALTER TABLE pipelines ADD COLUMN {col} {coltype}")  # nosec B608
+    def _migrate(table: str, extras: dict):
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # nosec B608
+        for col, coltype in extras.items():
+            if col in existing:
+                continue
+            if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
+                raise ValueError(f"Unsafe column definition: {col} {coltype}")
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}")  # nosec B608
 
-    existing_prospect = {r[1] for r in conn.execute("PRAGMA table_info(pipeline_prospects)").fetchall()}
-    for col, coltype in _PROSPECT_EXTRA_COLUMNS.items():
-        if col in existing_prospect:
-            continue
-        if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
-            raise ValueError(f"Unsafe column definition: {col} {coltype}")
-        conn.execute(f"ALTER TABLE pipeline_prospects ADD COLUMN {col} {coltype}")  # nosec B608
-
-    existing_li = {r[1] for r in conn.execute("PRAGMA table_info(linkedin_posts)").fetchall()}
-    for col, coltype in _LINKEDIN_POST_EXTRA_COLUMNS.items():
-        if col in existing_li:
-            continue
-        if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
-            raise ValueError(f"Unsafe column definition: {col} {coltype}")
-        conn.execute(f"ALTER TABLE linkedin_posts ADD COLUMN {col} {coltype}")  # nosec B608
+    _migrate("pipelines", _PIPELINE_EXTRA_COLUMNS)
+    _migrate("pipeline_prospects", _PROSPECT_EXTRA_COLUMNS)
+    _migrate("linkedin_posts", _LINKEDIN_POST_EXTRA_COLUMNS)
+    _migrate("pipeline_emails", _EMAIL_EXTRA_COLUMNS)
 
 def create_pipeline(id, company_name, company_url, user_description, sender_name=None, sender_company=None,
                     linkedin_url=None, deal_size=None, priority=None, notes=None):
@@ -749,6 +745,96 @@ def get_idea_history(idea_id: str) -> list[dict]:
             (idea_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Cross-table queries for Contacts / Outreach CRM ───────────────────────────
+
+def list_all_prospects_with_context() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT pp.*, p.company_name, p.status AS pipeline_status, p.company_url, "
+            "p.created_at AS pipeline_created_at, p.intelligence_json "
+            "FROM pipeline_prospects pp "
+            "LEFT JOIN pipelines p ON pp.pipeline_id = p.id "
+            "ORDER BY p.created_at DESC, pp.confidence DESC"
+        ).fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            if d.get("poc_plan_json"):
+                try:
+                    d["poc_plan"] = json.loads(d["poc_plan_json"])
+                except Exception:
+                    d["poc_plan"] = None
+            d.pop("poc_plan_json", None)
+            intel_json = d.pop("intelligence_json", None)
+            if intel_json:
+                try:
+                    intel = json.loads(intel_json)
+                    d["engagement_score"] = (intel.get("engagement_score") or {}).get("score", 0)
+                    d["industry"] = (intel.get("company_overview") or {}).get("industry", "")
+                except Exception:
+                    d["engagement_score"] = 0
+                    d["industry"] = ""
+            else:
+                d["engagement_score"] = 0
+                d["industry"] = ""
+            result.append(d)
+        return result
+
+
+def list_all_emails_with_context() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT pe.*, pp.name AS prospect_name, pp.title AS prospect_title, "
+            "pp.prospect_status, p.company_name "
+            "FROM pipeline_emails pe "
+            "LEFT JOIN pipeline_prospects pp ON pe.prospect_id = pp.id "
+            "LEFT JOIN pipelines p ON pe.pipeline_id = p.id "
+            "ORDER BY pe.created_at DESC"
+        ).fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            if d.get("keywords_used"):
+                try:
+                    d["keywords_used"] = json.loads(d["keywords_used"])
+                except Exception:
+                    d["keywords_used"] = []
+            result.append(d)
+        return result
+
+
+_ALLOWED_EMAIL_TRACKING = {"sent_at", "replied_at", "email_notes"}
+
+def update_email_tracking(email_id: str, fields: dict):
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED_EMAIL_TRACKING}
+    if not safe:
+        return
+    sets = ", ".join(f"{k}=?" for k in safe)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE pipeline_emails SET {sets} WHERE id=?",  # nosec B608
+                     (*safe.values(), email_id))
+
+
+def get_all_completed_intelligence() -> list[dict]:
+    """Return intelligence + company_name for all completed pipelines (for playbook/brief)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT company_name, intelligence_json, created_at FROM pipelines "
+            "WHERE status='complete' AND intelligence_json IS NOT NULL "
+            "ORDER BY created_at DESC"
+        ).fetchall()
+        result = []
+        for row in rows:
+            try:
+                intel = json.loads(row[1])
+                intel["_company_name"] = row[0]
+                intel["_analysed_at"] = row[2]
+                result.append(intel)
+            except Exception:
+                pass
+        return result
 
 
 def get_stats():
