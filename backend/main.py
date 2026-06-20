@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends, Response, Request
+from fastapi import FastAPI, HTTPException, Depends, Response, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from groq import Groq
 import os
