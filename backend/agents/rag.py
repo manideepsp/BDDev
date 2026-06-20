@@ -14,7 +14,7 @@ from utils import extract_json
 
 logger = logging.getLogger(__name__)
 
-COLLECTION = "nexus_bd_rag"
+COLLECTION = "ks_business_rag"
 
 
 class RAGIndexAgent:
