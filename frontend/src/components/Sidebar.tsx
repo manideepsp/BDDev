@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const NAV = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  cta?: boolean;
+}
+
+const NAV_MAIN: NavItem[] = [
   {
     href: '/',
     label: 'Dashboard',
@@ -25,6 +32,52 @@ const NAV = [
     ),
     cta: true,
   },
+];
+
+const NAV_PIPELINE: NavItem[] = [
+  {
+    href: '/contacts',
+    label: 'Contacts',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/outreach',
+    label: 'Outreach Tracker',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/playbook',
+    label: 'BD Playbook',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/brief',
+    label: 'Morning Brief',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+  },
+];
+
+const NAV_INTEL: NavItem[] = [
   {
     href: '/trends',
     label: 'Market Intelligence',
@@ -54,31 +107,54 @@ const NAV = [
       </svg>
     ),
   },
-  {
-    href: '/settings',
-    label: 'Company Profile',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
-          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-      </svg>
-    ),
-  },
 ];
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <div className="pt-4 pb-1 px-3">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">{label}</p>
+    </div>
+  );
+}
+
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+  if (item.cta && !active) {
+    return (
+      <Link href={item.href}
+        className="flex items-center gap-2.5 w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-medium px-3 py-2.5 rounded-lg transition-all shadow-sm shadow-indigo-900/30 mb-1">
+        {item.icon}
+        {item.label}
+      </Link>
+    );
+  }
+  return (
+    <Link href={item.href}
+      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+        active
+          ? 'bg-slate-800 text-white'
+          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+      }`}>
+      {item.icon}
+      <span className="flex-1">{item.label}</span>
+      {active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />}
+    </Link>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
 
+  const isActive = (href: string) => href === '/' ? pathname === '/' : pathname.startsWith(href);
+
   return (
     <aside className="w-60 bg-slate-900 min-h-screen flex flex-col flex-shrink-0 relative">
-      {/* Rainbow accent stripe — first thing judges see */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-indigo-500 via-violet-500 to-indigo-400" />
 
       {/* Brand */}
       <div className="px-5 pt-6 pb-5 border-b border-slate-800">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-900/40">
-            <svg className="w-4.5 h-4.5 text-white w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-[18px] h-[18px] text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}
                 d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -91,54 +167,23 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-3 space-y-0.5">
-        {NAV.map((item) => {
-          const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
+        {NAV_MAIN.map(item => (
+          <NavLink key={item.href} item={item} active={isActive(item.href)} />
+        ))}
 
-          if (item.cta && !active) {
-            return (
-              <Link key={item.href} href={item.href}
-                className="flex items-center gap-2.5 w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-sm font-medium px-3 py-2.5 rounded-lg transition-all shadow-sm shadow-indigo-900/30 mb-1">
-                {item.icon}
-                {item.label}
-              </Link>
-            );
-          }
+        <SectionLabel label="BD Pipeline" />
+        {NAV_PIPELINE.map(item => (
+          <NavLink key={item.href} item={item} active={isActive(item.href)} />
+        ))}
 
-          return (
-            <Link key={item.href} href={item.href}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                active
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}>
-              {item.icon}
-              <span className="flex-1">{item.label}</span>
-              {active && <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0" />}
-            </Link>
-          );
-        })}
-
-        {/* Section label */}
-        <div className="pt-5 pb-1 px-3">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">Pipeline stages</p>
-        </div>
-
-        {/* Stage hints — not links, just ambient context about the BD funnel */}
-        {[
-          { label: 'Gathering data', color: 'bg-blue-400',   dot: 'border-blue-400/30' },
-          { label: 'Human review',   color: 'bg-amber-400',  dot: 'border-amber-400/30' },
-          { label: 'AI synthesis',   color: 'bg-violet-400', dot: 'border-violet-400/30' },
-          { label: 'Outreach ready', color: 'bg-emerald-400', dot: 'border-emerald-400/30' },
-        ].map(({ label, color }) => (
-          <div key={label} className="flex items-center gap-2.5 px-3 py-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${color} flex-shrink-0 opacity-60`} />
-            <span className="text-xs text-slate-600">{label}</span>
-          </div>
+        <SectionLabel label="Intelligence" />
+        {NAV_INTEL.map(item => (
+          <NavLink key={item.href} item={item} active={isActive(item.href)} />
         ))}
       </nav>
 
-      {/* User footer — links to Company Profile settings */}
+      {/* Footer */}
       <div className="px-3 py-4 border-t border-slate-800">
         <Link href="/settings"
           className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors group">

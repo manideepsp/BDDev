@@ -177,6 +177,14 @@ class BulkGenerateRequest(BaseModel):
 class LinkedInGenerateRequest(BaseModel):
     persona: str = "auto"
 
+class EmailTrackingUpdate(BaseModel):
+    sent_at: Optional[str] = None
+    replied_at: Optional[str] = None
+    email_notes: Optional[str] = None
+
+class ContactStatusUpdate(BaseModel):
+    status: str
+
 class LinkedInRefineRequest(BaseModel):
     message: str
     current_content: str
@@ -1539,3 +1547,203 @@ async def delete_prospect(prospect_id: str):
         raise HTTPException(status_code=404, detail="Prospect not found")
     del prospects_db[prospect_id]
     return {"deleted": True}
+
+
+# ── Contacts DB ────────────────────────────────────────────────────────────────
+
+@app.get("/api/v2/contacts")
+async def get_all_contacts():
+    from db import list_all_prospects_with_context
+    return list_all_prospects_with_context()
+
+
+@app.patch("/api/v2/contacts/{prospect_id}/status")
+async def update_contact_status(prospect_id: str, body: ContactStatusUpdate):
+    from db import update_prospect_status, _ALLOWED_PROSPECT_STATUSES
+    if body.status not in _ALLOWED_PROSPECT_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Allowed: {sorted(_ALLOWED_PROSPECT_STATUSES)}")
+    update_prospect_status(prospect_id, body.status)
+    return {"ok": True}
+
+
+# ── Outreach Tracker ───────────────────────────────────────────────────────────
+
+@app.get("/api/v2/outreach")
+async def get_all_outreach():
+    from db import list_all_emails_with_context
+    return list_all_emails_with_context()
+
+
+@app.patch("/api/v2/outreach/{email_id}")
+async def update_outreach_tracking(email_id: str, body: EmailTrackingUpdate):
+    from db import update_email_tracking
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    update_email_tracking(email_id, fields)
+    return {"ok": True}
+
+
+# ── BD Playbook (AI battle cards) ─────────────────────────────────────────────
+
+@app.get("/api/v2/playbook")
+async def get_playbook():
+    from db import get_all_completed_intelligence
+    intelligence_list = get_all_completed_intelligence()
+    if not intelligence_list:
+        return {"battle_cards": [], "total_companies": 0, "generated_at": datetime.now().isoformat(),
+                "message": "No completed analyses yet. Research some companies first."}
+
+    # Group by industry
+    by_industry: dict[str, list[dict]] = {}
+    for intel in intelligence_list:
+        industry = (intel.get("company_overview") or {}).get("industry") or "General"
+        by_industry.setdefault(industry, []).append(intel)
+
+    industry_blocks = []
+    for industry, entries in list(by_industry.items())[:8]:  # cap at 8 industries
+        companies = [e["_company_name"] for e in entries]
+        pain_points = []
+        opportunities = []
+        for e in entries:
+            raw_pp = e.get("pain_points", [])
+            if isinstance(raw_pp, list):
+                for pp in raw_pp[:2]:
+                    txt = pp.get("title", pp) if isinstance(pp, dict) else pp
+                    if txt:
+                        pain_points.append(str(txt))
+            raw_opp = e.get("bd_opportunities", [])
+            if isinstance(raw_opp, list):
+                opportunities += [str(o) for o in raw_opp[:2] if o]
+        industry_blocks.append(
+            f"INDUSTRY: {industry}\n"
+            f"Companies: {', '.join(companies)}\n"
+            f"Pain points: {'; '.join(pain_points[:5])}\n"
+            f"Opportunities: {'; '.join(opportunities[:4])}"
+        )
+
+    prompt = f"""You are a senior BD strategist. Create objection-handling battle cards for each industry group.
+
+{chr(10).join(industry_blocks)}
+
+Return ONLY this JSON:
+{{
+  "battle_cards": [
+    {{
+      "industry": "Industry name",
+      "companies": ["Company A"],
+      "key_pain_points": ["specific pain 1", "specific pain 2", "specific pain 3"],
+      "objections": [
+        {{"objection": "We already have a solution", "response": "Specific, confident 2-sentence reframe"}},
+        {{"objection": "Budget is tight this quarter", "response": "Specific reframe showing ROI angle"}},
+        {{"objection": "We need to involve more stakeholders", "response": "Champion-building response"}}
+      ],
+      "talk_tracks": [
+        "Track 1 (Pain-led): ...",
+        "Track 2 (Opportunity-led): ...",
+        "Track 3 (Competitive-led): ..."
+      ],
+      "winning_angle": "The single most effective pitch angle for this specific industry"
+    }}
+  ]
+}}"""
+
+    try:
+        loop = asyncio.get_event_loop()
+        def _call():
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile", max_tokens=3000, temperature=0.4,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return extract_json(resp.choices[0].message.content)
+        result = await loop.run_in_executor(None, _call)
+        result["total_companies"] = len(intelligence_list)
+        result["generated_at"] = datetime.now().isoformat()
+        return result
+    except Exception as e:
+        logger.error(f"Playbook generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Playbook generation failed: {e}")
+
+
+# ── Morning Brief ──────────────────────────────────────────────────────────────
+
+@app.get("/api/v2/brief")
+async def get_morning_brief():
+    from db import get_stats, get_all_completed_intelligence, list_all_prospects_with_context, get_company_profile
+    stats = get_stats()
+    profile = get_company_profile() or {}
+    company_name = profile.get("company_name", "your company")
+    intelligence_list = get_all_completed_intelligence()
+    all_prospects = list_all_prospects_with_context()
+
+    # Hot prospects: high confidence + new/contacted + high engagement
+    hot = [
+        p for p in all_prospects
+        if p.get("confidence") in ("high", "medium")
+        and p.get("prospect_status") in ("new", "contacted", None, "")
+        and p.get("engagement_score", 0) >= 50
+    ]
+    hot.sort(key=lambda x: x.get("engagement_score", 0), reverse=True)
+    hot = hot[:5]
+
+    # Recent analyses
+    recent = intelligence_list[:5]
+    recent_block = "\n".join(
+        f"- {r['_company_name']}: {(r.get('company_overview') or {}).get('industry', 'N/A')}, "
+        f"engagement {(r.get('engagement_score') or {}).get('score', '?')}"
+        for r in recent
+    )
+
+    hot_block = "\n".join(
+        f"- {p['name']} ({p['title']}) at {p.get('company_name', '?')}, "
+        f"confidence={p['confidence']}, engagement={p.get('engagement_score', '?')}"
+        for p in hot
+    ) or "No high-confidence prospects yet."
+
+    today = datetime.now().strftime("%A, %B %d %Y")
+    prompt = f"""You are a BD intelligence assistant. Generate a morning brief for {company_name}.
+
+TODAY: {today}
+PIPELINE: {stats['total_pipelines']} researched, {stats['active_pipelines']} in-progress, {stats['completed_pipelines']} complete
+AVG ENGAGEMENT SCORE: {stats['avg_engagement_score']}
+TOTAL PROSPECTS IDENTIFIED: {stats['total_prospects_identified']}
+
+HOT PROSPECTS TO FOLLOW UP:
+{hot_block}
+
+RECENT ANALYSES:
+{recent_block}
+
+Return ONLY this JSON:
+{{
+  "executive_summary": "2-3 sentence strategic summary — what matters today, what momentum exists",
+  "hot_prospects": [
+    {{"name": "Name", "company": "Company", "score": 85, "reason": "Why they are hot right now — specific signal"}}
+  ],
+  "pipeline_health": [
+    {{"label": "Completion Rate", "value": "75%", "status": "good"}},
+    {{"label": "Avg Engagement", "value": 72, "status": "good"}},
+    {{"label": "Active Pipelines", "value": {stats['active_pipelines']}, "status": "neutral"}},
+    {{"label": "Prospects Ready", "value": {len(hot)}, "status": "good"}}
+  ],
+  "recommended_actions": [
+    {{"priority": "high", "action": "Specific action to take today", "company": "company name or null"}},
+    {{"priority": "medium", "action": "Another action this week", "company": null}},
+    {{"priority": "low", "action": "Longer horizon action", "company": null}}
+  ],
+  "linkedin_tip": "One specific, tactical LinkedIn content tip based on the BD pipeline context"
+}}"""
+
+    try:
+        loop = asyncio.get_event_loop()
+        def _call():
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile", max_tokens=1200, temperature=0.5,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return extract_json(resp.choices[0].message.content)
+        result = await loop.run_in_executor(None, _call)
+        result["date"] = today
+        result["generated_at"] = datetime.now().isoformat()
+        return result
+    except Exception as e:
+        logger.error(f"Brief generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Brief generation failed: {e}")
