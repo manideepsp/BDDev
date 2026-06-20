@@ -668,3 +668,171 @@ export interface CaseStudyPost {
 export async function generateCaseStudyPosts(pipelineId: string): Promise<{ posts: CaseStudyPost[]; company_name: string }> {
   return request(`/api/v2/pipeline/${pipelineId}/case-study-posts`, { method: 'POST' });
 }
+
+// ── LinkedIn Intelligence Hub ─────────────────────────────────────────────────
+
+export interface LinkedInTarget {
+  id: string;
+  company_name: string;
+  linkedin_url?: string;
+  website_url?: string;
+  created_at: string;
+}
+
+export interface FetchedPost {
+  id: string;
+  source_type: 'own' | 'target';
+  company_name: string;
+  title?: string;
+  content?: string;
+  published_date?: string;
+  post_url?: string;
+  fetched_at: string;
+}
+
+export interface PostIdea {
+  id: string;
+  topic: string;
+  angle: string;
+  suggested_format: string;
+  rationale: string;
+  hook?: string;
+  status: 'idea' | 'drafting' | 'drafted';
+  draft_content?: string;
+  created_at: string;
+}
+
+export interface HookEntry {
+  pattern: 'question' | 'stat' | 'story' | 'contrarian' | 'bold_claim';
+  hook: string;
+  company: string;
+  why: string;
+}
+
+export interface LinkedInAnalysis {
+  timeline_summary: string;
+  own_cadence?: string;
+  content_themes: string[];
+  competitor_angles: string[];
+  content_gaps: string[];
+  best_day_guess?: string;
+  hook_swipe_file: HookEntry[];
+  post_ideas: PostIdea[];
+  fetched_posts?: FetchedPost[];
+  _fetched_at?: string;
+  error?: string | null;
+}
+
+export interface PostScore {
+  scores: {
+    hook_strength: number;
+    specificity: number;
+    readability: number;
+    cta_clarity: number;
+    length_fit: number;
+  };
+  overall: number;
+  suggestions: string[];
+  verdict: 'ready_to_post' | 'needs_work' | 'strong_post';
+}
+
+export interface ThreadPart {
+  part: number;
+  content: string;
+  char_count: number;
+}
+
+export interface ThreadResult {
+  thread: ThreadPart[];
+  total_parts: number;
+}
+
+export interface FirstComment {
+  comment: string;
+  rationale: string;
+}
+
+export interface RemixResult {
+  remixed_content: string;
+  format_kept: string;
+  what_changed: string;
+}
+
+export async function addLinkedInTarget(data: { company_name: string; linkedin_url?: string; website_url?: string }): Promise<{ id: string; ok: boolean }> {
+  return request('/api/v2/linkedin/targets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function listLinkedInTargets(): Promise<LinkedInTarget[]> {
+  return request('/api/v2/linkedin/targets');
+}
+
+export async function deleteLinkedInTarget(id: string): Promise<void> {
+  await request(`/api/v2/linkedin/targets/${id}`, { method: 'DELETE' });
+}
+
+export async function fetchAndAnalyzeLinkedIn(): Promise<{ analysis_id: string; fetched_count: number; analysis: LinkedInAnalysis; fetched_posts: FetchedPost[] }> {
+  return request('/api/v2/linkedin/fetch-analyze', { method: 'POST' });
+}
+
+export async function getLinkedInAnalysis(): Promise<LinkedInAnalysis | null> {
+  return request('/api/v2/linkedin/analysis');
+}
+
+export async function listLinkedInIdeas(): Promise<PostIdea[]> {
+  return request('/api/v2/linkedin/ideas');
+}
+
+export async function startIdeaDraft(ideaId: string): Promise<{ content: string }> {
+  return request(`/api/v2/linkedin/ideas/${ideaId}/draft/start`, { method: 'POST' });
+}
+
+export async function refineIdeaDraft(
+  ideaId: string,
+  data: { message: string; current_content: string; history: { role: string; content: string }[] }
+): Promise<{ content: string; history: { role: string; content: string }[] }> {
+  return request(`/api/v2/linkedin/ideas/${ideaId}/draft/refine`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function publishIdeaAsPost(ideaId: string): Promise<{ post_id: string }> {
+  return request(`/api/v2/linkedin/ideas/${ideaId}/publish`, { method: 'POST' });
+}
+
+export async function scoreLinkedInPost(content: string): Promise<PostScore> {
+  return request('/api/v2/linkedin/score-post', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function buildLinkedInThread(content: string): Promise<ThreadResult> {
+  return request('/api/v2/linkedin/build-thread', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function generateFirstComment(postContent: string): Promise<FirstComment> {
+  return request('/api/v2/linkedin/first-comment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ post_content: postContent }),
+  });
+}
+
+export async function remixCompetitorPost(original_content: string, company_name: string): Promise<RemixResult> {
+  return request('/api/v2/linkedin/remix-post', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ original_content, company_name }),
+  });
+}

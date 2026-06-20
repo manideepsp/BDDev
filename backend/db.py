@@ -107,6 +107,52 @@ def init_db():
             char_count INTEGER,
             created_at TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS linkedin_targets (
+            id TEXT PRIMARY KEY,
+            company_name TEXT NOT NULL,
+            linkedin_url TEXT,
+            website_url TEXT,
+            created_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS linkedin_fetched_posts (
+            id TEXT PRIMARY KEY,
+            source_type TEXT NOT NULL,
+            company_name TEXT NOT NULL,
+            title TEXT,
+            content TEXT,
+            published_date TEXT,
+            post_url TEXT,
+            fetched_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS linkedin_post_ideas (
+            id TEXT PRIMARY KEY,
+            topic TEXT NOT NULL,
+            angle TEXT,
+            suggested_format TEXT,
+            rationale TEXT,
+            hook TEXT,
+            status TEXT DEFAULT 'idea',
+            draft_content TEXT,
+            created_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS linkedin_idea_history (
+            id TEXT PRIMARY KEY,
+            idea_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT,
+            FOREIGN KEY (idea_id) REFERENCES linkedin_post_ideas(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS linkedin_analysis (
+            id TEXT PRIMARY KEY,
+            result_json TEXT NOT NULL,
+            created_at TEXT
+        );
         """)
         _ensure_columns(conn)
 
@@ -525,6 +571,121 @@ def get_feedback_preferences() -> dict:
         "avoided_tones": avoided,
         "total_rated": len(rows),
     }
+
+
+# ── LinkedIn Intelligence Hub ──────────────────────────────────────────────────
+
+def add_linkedin_target(id: str, company_name: str, linkedin_url: str = "", website_url: str = ""):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO linkedin_targets (id, company_name, linkedin_url, website_url, created_at) VALUES (?,?,?,?,?)",
+            (id, company_name, linkedin_url or "", website_url or "", datetime.now().isoformat())
+        )
+
+
+def list_linkedin_targets() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM linkedin_targets ORDER BY created_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_linkedin_target(id: str):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM linkedin_targets WHERE id=?", (id,))
+
+
+def save_fetched_posts(posts: list[dict]):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM linkedin_fetched_posts")
+        for p in posts:
+            conn.execute(
+                "INSERT INTO linkedin_fetched_posts (id, source_type, company_name, title, content, published_date, post_url, fetched_at) VALUES (?,?,?,?,?,?,?,?)",
+                (p.get("id", str(uuid.uuid4())), p.get("source_type", "target"),
+                 p.get("company_name", ""), p.get("title", ""), p.get("content", ""),
+                 p.get("published_date", ""), p.get("post_url", ""), datetime.now().isoformat())
+            )
+
+
+def list_fetched_posts() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM linkedin_fetched_posts ORDER BY fetched_at DESC").fetchall()
+        return [dict(r) for r in rows]
+
+
+def save_linkedin_analysis(result: dict) -> str:
+    aid = str(uuid.uuid4())
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO linkedin_analysis (id, result_json, created_at) VALUES (?,?,?)",
+            (aid, json.dumps(result), datetime.now().isoformat())
+        )
+    return aid
+
+
+def get_latest_linkedin_analysis() -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT result_json, created_at FROM linkedin_analysis ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            data = json.loads(row[0])
+            data["_fetched_at"] = row[1]
+            return data
+        except Exception:
+            return None
+
+
+def save_linkedin_ideas(ideas: list[dict]):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM linkedin_post_ideas")
+        for idea in ideas:
+            conn.execute(
+                "INSERT INTO linkedin_post_ideas (id, topic, angle, suggested_format, rationale, hook, status, created_at) VALUES (?,?,?,?,?,?,'idea',?)",
+                (idea.get("id", str(uuid.uuid4())), idea.get("topic", ""), idea.get("angle", ""),
+                 idea.get("suggested_format", ""), idea.get("rationale", ""), idea.get("hook", ""),
+                 datetime.now().isoformat())
+            )
+
+
+def list_linkedin_ideas() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM linkedin_post_ideas ORDER BY created_at ASC").fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_linkedin_idea(id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM linkedin_post_ideas WHERE id=?", (id,)).fetchone()
+        return dict(row) if row else None
+
+
+def update_linkedin_idea_draft(id: str, content: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE linkedin_post_ideas SET draft_content=?, status='drafting' WHERE id=?", (content, id))
+
+
+def update_linkedin_idea_status(id: str, status: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE linkedin_post_ideas SET status=? WHERE id=?", (status, id))
+
+
+def save_idea_history(idea_id: str, role: str, content: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO linkedin_idea_history (id, idea_id, role, content, created_at) VALUES (?,?,?,?,?)",
+            (str(uuid.uuid4()), idea_id, role, content, datetime.now().isoformat())
+        )
+
+
+def get_idea_history(idea_id: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT role, content, created_at FROM linkedin_idea_history WHERE idea_id=? ORDER BY created_at",
+            (idea_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def get_stats():
