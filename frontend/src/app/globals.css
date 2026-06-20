@@ -3,55 +3,123 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* ── Core palette ─────────────────────────────────────── */
+    --background: 220 20% 97%;        /* #F4F5FA — cool near-white */
+    --foreground: 222 47% 8%;         /* #0D1117 — near-black */
+
+    --card: 0 0% 100%;                /* pure white */
+    --card-foreground: 222 47% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 8%;
+
+    /* Primary — vivid indigo-violet */
+    --primary: 243 75% 59%;           /* #5B50F7 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 16% 94%;         /* #EEF0F5 */
+    --secondary-foreground: 222 47% 20%;
+
+    --muted: 220 16% 94%;
+    --muted-foreground: 220 9% 50%;   /* #78808F */
+
+    --accent: 243 75% 96%;            /* indigo tint */
+    --accent-foreground: 243 75% 45%;
+
+    --destructive: 0 72% 51%;         /* #E63946 */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 18% 90%;            /* #E2E5EE */
+    --input: 220 18% 90%;
+    --ring: 243 75% 59%;              /* matches primary */
+
+    /* ── Status colours ───────────────────────────────────── */
+    --success: 152 61% 40%;           /* #27A862 */
+    --success-foreground: 0 0% 100%;
+    --success-subtle: 152 61% 95%;    /* #EEF9F4 */
+
+    --warning: 38 95% 48%;            /* #F59E0B */
+    --warning-foreground: 0 0% 100%;
+    --warning-subtle: 38 95% 94%;
+
+    --danger: 0 72% 51%;
+    --danger-foreground: 0 0% 100%;
+    --danger-subtle: 0 72% 96%;
+
+    /* ── Sidebar ──────────────────────────────────────────── */
+    --sidebar: 232 36% 7%;            /* #0A0C14 near-black with blue tint */
+    --sidebar-foreground: 210 20% 85%;
+    --sidebar-muted: 232 20% 20%;     /* #262C3E surface */
+    --sidebar-accent: 243 75% 59%;    /* matches primary */
+    --sidebar-border: 232 25% 12%;    /* #16192A */
+
+    /* ── Shape ────────────────────────────────────────────── */
+    --radius: 0.75rem;                /* 12px */
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
   body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: rgb(99 102 241 / 0.12);
+    background: hsl(243 75% 59% / 0.15);
   }
 
+  /* scrollbars */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgb(148 163 184 / 0.3); border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgb(148 163 184 / 0.55); }
+  ::-webkit-scrollbar-thumb { background: hsl(220 18% 80%); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(220 9% 60%); }
+}
+
+@layer components {
+  /* ── Page shell ───────────────────────────────────────── */
+  .page-header {
+    @apply bg-card border-b border-border px-8 py-5;
+  }
+  .page-content {
+    @apply px-8 py-6;
+  }
+
+  /* ── Typography helpers ──────────────────────────────── */
+  .label-xs {
+    @apply text-[10px] font-semibold uppercase tracking-widest text-muted-foreground;
+  }
+
+  /* ── Card variants ───────────────────────────────────── */
+  .card-base {
+    @apply bg-card rounded-2xl border border-border shadow-card;
+  }
+  .card-interactive {
+    @apply card-base transition-shadow hover:shadow-card-hover cursor-pointer;
+  }
+
+  /* ── Gradient text ───────────────────────────────────── */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-violet-500 bg-clip-text text-transparent;
+  }
 }
 
 @layer utilities {
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
-
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  @keyframes scaleIn {
-    from { opacity: 0; transform: scale(0.96); }
-    to   { opacity: 1; transform: scale(1); }
-  }
-
-  @keyframes livePulse {
-    0%, 100% { transform: scale(1);    opacity: 1; }
-    50%       { transform: scale(0.8);  opacity: 0.45; }
-  }
-
-  @keyframes progressBar {
-    from { width: 0; }
-  }
-
-  .animate-fade-in    { animation: fadeIn    0.3s  ease-out both; }
-  .animate-slide-up   { animation: slideUp   0.35s ease-out both; }
-  .animate-scale-in   { animation: scaleIn   0.25s ease-out both; }
-  .animate-live-pulse { animation: livePulse 2s    ease-in-out infinite; }
-
-  /* stagger siblings with these delay helpers */
+  /* stagger animations */
   .anim-delay-1 { animation-delay: 60ms;  }
   .anim-delay-2 { animation-delay: 120ms; }
   .anim-delay-3 { animation-delay: 180ms; }
   .anim-delay-4 { animation-delay: 240ms; }
+  .anim-delay-5 { animation-delay: 300ms; }
+
+  /* live dot pulse */
+  .live-dot {
+    @apply w-2 h-2 rounded-full bg-success animate-live-pulse;
+  }
 }
