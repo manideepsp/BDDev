@@ -5,7 +5,7 @@ from agents.embedder import get_embedder, get_qdrant_client, embed_one, VECTOR_S
 
 logger = logging.getLogger(__name__)
 
-COLLECTION_NAME = "nexus_bd_intelligence"
+COLLECTION_NAME = "ks_business_intelligence"
 
 class VectorStoreAgent:
     def __init__(self):

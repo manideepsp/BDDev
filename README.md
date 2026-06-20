@@ -1,4 +1,4 @@
-# Nexus BD — AI Business Development Intelligence
+# KS Business — Knowledge Systems BD Intelligence
 
 > **CRAIL Hackathon 2026** — A multi-agent pipeline that researches companies, scores engagement fit, identifies prospects, and generates hyper-personalised outreach — in under 30 seconds.
 
@@ -20,7 +20,7 @@ The result is inconsistent output, missed signals, and response rates that make 
 
 ## The Solution
 
-Nexus BD collapses that 2–3 hour cycle into **a 30-second multi-agent pipeline**. You enter a company name, your offering, and an optional URL. The system:
+KS Business collapses that 2–3 hour cycle into **a 30-second multi-agent pipeline**. You enter a company name, your offering, and an optional URL. The system:
 
 - Scrapes the company website, LinkedIn org profile, recent posts, open job listings, and key personnel — **concurrently**
 - Runs a **People Swarm**: one enrichment agent per discovered person fires in parallel to assess seniority, role category, and BD relevance
@@ -42,7 +42,7 @@ flowchart LR
         API["REST API\n/api/v2/*"]
         Orch["Pipeline Orchestrator\nasyncio background task"]
         Agents["Agent Layer\n14 specialised agents"]
-        DB[("SQLite\nnexus.db")]
+        DB[("SQLite\nks_business.db")]
     end
 
     subgraph External["External Services"]
@@ -196,7 +196,7 @@ sequenceDiagram
 | **RAGIndexer** | `fastembed` (ONNX) · `qdrant-client` | Embedded chunks in per-pipeline Qdrant namespace |
 | **RAGRetriever** | Groq LLM (query planning) · `qdrant-client` (ANN search) | Top-k retrieved chunks |
 | **InsightsAgent** | Groq LLM · RAG context | Intelligence report: pain points, ICP score, prospects, competitive analysis |
-| **VectorStoreAgent** | `fastembed` · `qdrant-client` | Company embedding in shared `nexus_bd_intelligence` collection |
+| **VectorStoreAgent** | `fastembed` · `qdrant-client` | Company embedding in shared `ks_business_intelligence` collection |
 | **POCPlanAgent** | Groq LLM (JSON mode) | POC: objective, approach, timeline, talking points, risks |
 | **EmailGeneratorAgent** | Groq LLM (JSON mode · temperature 0.72) | 3 subject variants, email body, follow-up, personalization hook |
 | **PitchAssetAgent** | Groq LLM (JSON mode · 4096 tokens) | Exec summary, 2 cold emails, LinkedIn note, 5 talking points |
@@ -258,7 +258,7 @@ flowchart LR
 | **Groq `llama-3.3-70b-versatile`** | ~400 tok/s on the free tier — fast enough for 5–15 LLM calls per pipeline with real-time UI feedback |
 | **fastembed `BAAI/bge-small-en-v1.5`** | 384-dim ONNX model, runs on CPU, no API key, ships as a binary — embeddings are free and sub-second |
 | **Qdrant Cloud free tier** | Persistent hosted ANN vector search; backend stays stateless. Gracefully skipped if `QDRANT_URL` is absent |
-| **SQLite via stdlib `sqlite3`** | Zero extra dependencies — no Docker Compose, no Postgres. Fly.io mounts a persistent volume at `/data/nexus.db` |
+| **SQLite via stdlib `sqlite3`** | Zero extra dependencies — no Docker Compose, no Postgres. Fly.io mounts a persistent volume at `/data/ks_business.db` |
 | **Concurrent gather phase** | `asyncio.gather` across website, LinkedIn, posts, jobs cuts ~25 s serial scraping to ~5 s wall-clock time |
 | **People Swarm** | Enriching 8 people one-at-a-time is 8× slower. One `asyncio.create_task` per person (capped at 8) reduces it to the slowest single call |
 | **Human checkpoint** | The gather phase surfaces raw, unfiltered data. Pruning irrelevant people and noisy posts *before* synthesis directly improves the evidence the LLM reasons over — this is a quality gate, not a UX feature |
@@ -394,7 +394,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `QDRANT_API_KEY` | No | Qdrant Cloud API key |
 | `TAVILY_API_KEY` | No | [tavily.com](https://tavily.com) — higher-quality search; DDG is the default |
 | `ALLOWED_ORIGINS` | No | CORS origins, comma-separated (default: `localhost:3000`) |
-| `DB_PATH` | No | SQLite file path (default: `nexus.db`; Fly.io uses `/data/nexus.db`) |
+| `DB_PATH` | No | SQLite file path (default: `ks_business.db`; Fly.io uses `/data/ks_business.db`) |
 
 ### Production deployment
 

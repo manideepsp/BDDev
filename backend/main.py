@@ -16,7 +16,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Nexus BD API", version="2.0.0")
+app = FastAPI(title="KS Business API", description="Knowledge Systems — BD Intelligence Platform", version="2.0.0")
 
 _default_allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _raw_allowed_origins = os.getenv("ALLOWED_ORIGINS")
