@@ -660,6 +660,368 @@ async def refine_linkedin_post(post_id: str, body: LinkedInRefineRequest):
         raise HTTPException(status_code=502, detail=f"Refine failed: {e}")
 
 
+# --- LinkedIn Intelligence Hub ---
+
+class LinkedInTargetRequest(BaseModel):
+    company_name: str
+    linkedin_url: str = ""
+    website_url: str = ""
+
+class LinkedInIdeaDraftRefineRequest(BaseModel):
+    message: str
+    current_content: str
+    history: List[dict] = []
+
+class LinkedInScoreRequest(BaseModel):
+    content: str
+
+class LinkedInThreadRequest(BaseModel):
+    content: str
+
+class LinkedInFirstCommentRequest(BaseModel):
+    post_content: str
+
+class LinkedInRemixRequest(BaseModel):
+    original_content: str
+    company_name: str
+
+
+@app.post("/api/v2/linkedin/targets")
+async def add_linkedin_target(body: LinkedInTargetRequest):
+    from db import add_linkedin_target as db_add
+    id = str(uuid.uuid4())
+    db_add(id, body.company_name, body.linkedin_url, body.website_url)
+    return {"id": id, "ok": True}
+
+
+@app.get("/api/v2/linkedin/targets")
+async def get_linkedin_targets():
+    from db import list_linkedin_targets
+    return list_linkedin_targets()
+
+
+@app.delete("/api/v2/linkedin/targets/{target_id}")
+async def remove_linkedin_target(target_id: str):
+    from db import delete_linkedin_target
+    delete_linkedin_target(target_id)
+    return {"ok": True}
+
+
+@app.post("/api/v2/linkedin/fetch-analyze")
+async def fetch_and_analyze():
+    from db import (get_company_profile, list_linkedin_targets, save_fetched_posts,
+                    save_linkedin_analysis, save_linkedin_ideas)
+    from agents.posts import LinkedInPostsAgent
+    from agents.linkedin_analysis import LinkedInAnalysisAgent
+
+    company_profile = get_company_profile() or {}
+    own_company = company_profile.get("company_name", "")
+    targets = list_linkedin_targets()
+
+    posts_agent = LinkedInPostsAgent()
+    all_fetched: list[dict] = []
+
+    # Fetch own company posts
+    if own_company:
+        try:
+            result = posts_agent.run(
+                company_name=own_company,
+                lookback_months=3,
+                limit=10,
+                company_url=company_profile.get("website_url", ""),
+            )
+            for p in result.get("posts", []):
+                all_fetched.append({
+                    "id": str(uuid.uuid4()),
+                    "source_type": "own",
+                    "company_name": own_company,
+                    "title": p.get("title", ""),
+                    "content": p.get("text", ""),
+                    "published_date": p.get("date", ""),
+                    "post_url": p.get("url", ""),
+                })
+        except Exception as e:
+            logger.warning(f"Own company fetch failed: {e}")
+
+    # Fetch target company posts
+    for target in targets:
+        try:
+            result = posts_agent.run(
+                company_name=target["company_name"],
+                lookback_months=3,
+                limit=10,
+                company_url=target.get("website_url", ""),
+            )
+            for p in result.get("posts", []):
+                all_fetched.append({
+                    "id": str(uuid.uuid4()),
+                    "source_type": "target",
+                    "company_name": target["company_name"],
+                    "title": p.get("title", ""),
+                    "content": p.get("text", ""),
+                    "published_date": p.get("date", ""),
+                    "post_url": p.get("url", ""),
+                })
+        except Exception as e:
+            logger.warning(f"Target fetch failed for {target['company_name']}: {e}")
+
+    save_fetched_posts(all_fetched)
+
+    analysis = LinkedInAnalysisAgent(client).run(own_company or "your company", all_fetched)
+    analysis_id = save_linkedin_analysis(analysis)
+
+    # Save post ideas to DB
+    ideas = analysis.get("post_ideas", [])
+    if ideas:
+        save_linkedin_ideas(ideas)
+
+    return {
+        "analysis_id": analysis_id,
+        "fetched_count": len(all_fetched),
+        "analysis": analysis,
+        "fetched_posts": all_fetched,
+    }
+
+
+@app.get("/api/v2/linkedin/analysis")
+async def get_linkedin_analysis():
+    from db import get_latest_linkedin_analysis, list_fetched_posts, list_linkedin_ideas
+    analysis = get_latest_linkedin_analysis()
+    if not analysis:
+        return None
+    analysis["fetched_posts"] = list_fetched_posts()
+    analysis["post_ideas"] = list_linkedin_ideas()
+    return analysis
+
+
+@app.get("/api/v2/linkedin/ideas")
+async def get_linkedin_ideas():
+    from db import list_linkedin_ideas
+    return list_linkedin_ideas()
+
+
+@app.post("/api/v2/linkedin/ideas/{idea_id}/draft/start")
+async def start_idea_draft(idea_id: str):
+    from db import get_linkedin_idea, update_linkedin_idea_draft, get_company_profile
+    from agents.linkedin_draft import LinkedInDraftAgent
+
+    idea = get_linkedin_idea(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    company_profile = get_company_profile()
+    content = LinkedInDraftAgent(client).start_draft(idea, company_profile)
+    update_linkedin_idea_draft(idea_id, content)
+    return {"content": content}
+
+
+@app.post("/api/v2/linkedin/ideas/{idea_id}/draft/refine")
+async def refine_idea_draft(idea_id: str, body: LinkedInIdeaDraftRefineRequest):
+    from db import get_linkedin_idea, update_linkedin_idea_draft, get_company_profile, save_idea_history
+    from agents.linkedin_draft import LinkedInDraftAgent
+
+    idea = get_linkedin_idea(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    company_profile = get_company_profile()
+    try:
+        new_content = LinkedInDraftAgent(client).refine_draft(
+            body.current_content, body.message, body.history, company_profile
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Refine failed: {e}")
+
+    update_linkedin_idea_draft(idea_id, new_content)
+    save_idea_history(idea_id, "user", body.message)
+    save_idea_history(idea_id, "assistant", new_content)
+
+    new_history = body.history + [
+        {"role": "user", "content": body.message},
+        {"role": "assistant", "content": new_content},
+    ]
+    return {"content": new_content, "history": new_history}
+
+
+@app.post("/api/v2/linkedin/ideas/{idea_id}/publish")
+async def publish_idea_as_post(idea_id: str):
+    from db import get_linkedin_idea, update_linkedin_idea_status, save_linkedin_post
+    idea = get_linkedin_idea(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    draft = idea.get("draft_content", "")
+    if not draft:
+        raise HTTPException(status_code=400, detail="No draft content to publish")
+
+    post_id = str(uuid.uuid4())
+    save_linkedin_post({
+        "id": post_id,
+        "content": draft,
+        "strategy": idea.get("angle", "industry_take"),
+        "trend_cluster": idea.get("topic", ""),
+        "strategy_note": idea.get("rationale", ""),
+        "status": "draft",
+        "char_count": len(draft),
+        "created_at": datetime.now().isoformat(),
+    })
+    update_linkedin_idea_status(idea_id, "drafted")
+    return {"post_id": post_id}
+
+
+@app.post("/api/v2/linkedin/score-post")
+async def score_linkedin_post(body: LinkedInScoreRequest):
+    prompt = f"""You are a LinkedIn content coach. Score this B2B post critically.
+
+POST:
+{body.content}
+
+Return ONLY this JSON:
+{{
+  "scores": {{
+    "hook_strength": <0-10>,
+    "specificity": <0-10>,
+    "readability": <0-10>,
+    "cta_clarity": <0-10>,
+    "length_fit": <0-10>
+  }},
+  "overall": <weighted average * 10, 0-100>,
+  "suggestions": ["specific improvement 1", "specific improvement 2", "specific improvement 3"],
+  "verdict": "ready_to_post|needs_work|strong_post"
+}}
+
+Scoring guide:
+- hook_strength: does the first line compel you to read on?
+- specificity: are there concrete details, numbers, named examples?
+- readability: short sentences, natural flow, no jargon?
+- cta_clarity: does it end with a clear invitation to engage?
+- length_fit: is it the right length (sweet spot 800-1300 chars)?
+- overall: weighted average (hook×25 + specificity×25 + readability×20 + cta×15 + length×15)
+- verdict: strong_post ≥75, ready_to_post ≥55, needs_work <55"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=500,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        return _json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Scoring failed: {e}")
+
+
+@app.post("/api/v2/linkedin/build-thread")
+async def build_linkedin_thread(body: LinkedInThreadRequest):
+    prompt = f"""Convert this LinkedIn post into a compelling thread.
+
+POST:
+{body.content}
+
+Rules:
+- 5-7 parts
+- Each part under 280 characters
+- Part 1: the hook (most compelling line, standalone)
+- Middle parts: build the argument/story
+- Last part: CTA (follow / comment / question)
+- Each part ends with its number: "1/N", "2/N" etc (where N = total parts)
+
+Return ONLY this JSON:
+{{
+  "thread": [
+    {{"part": 1, "content": "..."}}
+  ],
+  "total_parts": <N>
+}}"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=800,
+            temperature=0.65,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        data = _json.loads(resp.choices[0].message.content)
+        thread = data.get("thread", [])
+        for part in thread:
+            part["char_count"] = len(part.get("content", ""))
+        return {"thread": thread, "total_parts": data.get("total_parts", len(thread))}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Thread build failed: {e}")
+
+
+@app.post("/api/v2/linkedin/first-comment")
+async def generate_first_comment(body: LinkedInFirstCommentRequest):
+    prompt = f"""You are a LinkedIn growth expert. Write the ideal first comment to pin immediately after publishing this post.
+
+POST:
+{body.post_content}
+
+The first comment should add value the post didn't cover: a key stat, a follow-up insight, a resource, or an engaging question. Under 200 characters.
+
+Return ONLY this JSON:
+{{
+  "comment": "the comment text",
+  "rationale": "one sentence — why this boosts reach"
+}}"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=200,
+            temperature=0.6,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        return _json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"First comment generation failed: {e}")
+
+
+@app.post("/api/v2/linkedin/remix-post")
+async def remix_competitor_post(body: LinkedInRemixRequest):
+    from db import get_company_profile
+    company_profile = get_company_profile() or {}
+    own_company = company_profile.get("company_name", "our company")
+    services = ", ".join(company_profile.get("services", [])[:3])
+    usps = company_profile.get("usps", "")
+
+    prompt = f"""You are a content strategist. A competitor posted this:
+
+ORIGINAL (by {body.company_name}):
+{body.original_content}
+
+YOUR COMPANY: {own_company}
+YOUR OFFERING: {f"{services}. " if services else ""}{usps}
+
+Task: Rewrite this post for {own_company} — keep the SAME structure, format, and hook pattern that makes the original effective. Change only the company context and value proposition. Do not copy phrases directly.
+
+Return ONLY this JSON:
+{{
+  "remixed_content": "the remixed post text",
+  "format_kept": "e.g. stat-opener → problem → solution → outcome (1 sentence)",
+  "what_changed": "brief explanation of what was adapted"
+}}"""
+
+    try:
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=600,
+            temperature=0.7,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        import json as _json
+        return _json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Remix failed: {e}")
+
+
 @app.post("/api/v2/email/{email_id}/refine")
 async def refine_email_endpoint(email_id: str, body: EmailRefineRequest):
     from db import get_email_by_id, update_email_field
