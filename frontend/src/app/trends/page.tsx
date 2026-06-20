@@ -1,7 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { TrendingUp, CheckCircle2, Search, BarChart } from 'lucide-react';
 import { getMarketTrends, listPipelines, TrendsResponse, TrendsCluster, Pipeline } from '@/lib/api';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 const SECTOR_ICONS: Record<string, string> = {
   fintech: '💳', finance: '💳', banking: '🏦',
@@ -30,68 +37,65 @@ function getSectorIcon(theme: string): string {
 function ClusterCard({ cluster, index, pipelineMap }: { cluster: TrendsCluster; index: number; pipelineMap: Record<string, string> }) {
   const icon = getSectorIcon(cluster.theme);
   return (
-    <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-slide-up anim-delay-${Math.min(index + 1, 4) as 1|2|3|4}`}>
-      {/* Card header */}
-      <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start gap-4">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 flex items-center justify-center flex-shrink-0 text-xl">
+    <Card className={cn('overflow-hidden', `anim-delay-${Math.min(index + 1, 4) as 1 | 2 | 3 | 4} animate-slide-up`)}>
+      <CardHeader className="flex-row items-start gap-4 py-4">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/15 flex items-center justify-center flex-shrink-0 text-xl">
           {icon}
         </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-slate-900 text-base leading-snug">{cluster.theme}</h3>
-          <div className="flex flex-wrap gap-1.5 mt-2">
+        <div className="flex-1 min-w-0 flex flex-col gap-0">
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle className="text-base leading-snug">{cluster.theme}</CardTitle>
+            <Badge variant="muted" size="sm" className="flex-shrink-0 mt-0.5">
+              {cluster.companies.length} {cluster.companies.length === 1 ? 'company' : 'companies'}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
             {cluster.companies.map(c => {
               const pid = pipelineMap[c.toLowerCase()];
               return pid ? (
-                <Link key={c} href={`/pipeline/${pid}`} className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium hover:bg-indigo-100 transition-colors border border-indigo-100">
-                  {c} →
+                <Link key={c} href={`/pipeline/${pid}`}>
+                  <Badge variant="default" className="cursor-pointer hover:opacity-80 transition-opacity">
+                    {c} →
+                  </Badge>
                 </Link>
               ) : (
-                <span key={c} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full font-medium">{c}</span>
+                <Badge key={c} variant="secondary">{c}</Badge>
               );
             })}
           </div>
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-slate-50 border border-slate-200 rounded-full px-2.5 py-1 flex-shrink-0">
-          {cluster.companies.length} {cluster.companies.length === 1 ? 'company' : 'companies'}
-        </span>
-      </div>
+      </CardHeader>
 
-      {/* Market insight */}
-      <div className="px-6 py-4">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Market Signal</p>
-        <p className="text-sm text-slate-700 leading-relaxed">{cluster.insight}</p>
-      </div>
+      <CardContent className="pt-0 space-y-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1.5">Market Signal</p>
+          <p className="text-sm text-foreground leading-relaxed">{cluster.insight}</p>
+        </div>
 
-      {/* BD opportunity */}
-      {cluster.opportunity && (
-        <div className="mx-6 mb-5 bg-emerald-50 border border-emerald-100 rounded-lg p-4">
-          <div className="flex items-start gap-2.5">
-            <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <svg className="w-3 h-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 mb-1">BD Opportunity</p>
-              <p className="text-sm text-emerald-800 leading-relaxed">{cluster.opportunity}</p>
+        {cluster.opportunity && (
+          <div className="bg-success-subtle border border-success/20 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-5 h-5 rounded-full bg-success/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <CheckCircle2 className="w-3 h-3 text-success" />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-success mb-1">BD Opportunity</p>
+                <p className="text-sm text-success/90 leading-relaxed">{cluster.opportunity}</p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </CardContent>
 
-      {/* Action footer */}
-      <div className="px-6 pb-5 flex items-center gap-3">
-        <Link
-          href="/analyze"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 hover:border-indigo-200 px-3 py-1.5 rounded-lg transition-all"
-        >
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          Analyse a company in this cluster
-        </Link>
-      </div>
-    </div>
+      <CardFooter>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/analyze" className="flex items-center gap-1.5">
+            <Search className="w-3.5 h-3.5" />
+            Analyse a company in this cluster
+          </Link>
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -99,25 +103,29 @@ function LoadingSkeleton() {
   return (
     <div className="space-y-4">
       {[1, 2, 3].map(i => (
-        <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 animate-pulse">
+        <Card key={i} className="p-6">
           <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-slate-100" />
+            <Skeleton className="w-11 h-11 rounded-xl" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 bg-slate-100 rounded w-1/3" />
-              <div className="h-3 bg-slate-100 rounded w-1/2" />
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-1/2" />
+              <div className="flex gap-2 pt-1">
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+              </div>
             </div>
           </div>
-          <div className="mt-4 space-y-2">
-            <div className="h-3 bg-slate-100 rounded" />
-            <div className="h-3 bg-slate-100 rounded w-4/5" />
+          <div className="mt-5 space-y-2">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-4/5" />
           </div>
-        </div>
+        </Card>
       ))}
     </div>
   );
 }
 
-// ── Content Intelligence Brief ────────────────────────────────────────────────
+// ── Content Intelligence Brief ─────────────────────────────────────────────
 
 const FORMAT_MAP: Record<string, string> = {
   trend_spotlight: 'Trend Spotlight',
@@ -139,9 +147,8 @@ function inferPostFormat(cluster: TrendsCluster): string {
 function ContentBrief({ clusters }: { clusters: TrendsCluster[] }) {
   const [copied, setCopied] = useState(false);
 
-  const brief = clusters.map((c, i) => {
+  const brief = clusters.map((c) => {
     const format = inferPostFormat(c);
-    // derive a 1-sentence content hook from cluster insight
     const hook = c.insight.split('.')[0] + '.';
     const audience = c.companies.length > 0
       ? `Companies like ${c.companies.slice(0, 2).join(', ')}`
@@ -171,46 +178,40 @@ function ContentBrief({ clusters }: { clusters: TrendsCluster[] }) {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Editorial Brief</p>
-          <p className="text-xs text-slate-400 mt-0.5">Content angles derived from your market intelligence clusters</p>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Editorial Brief</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Content angles derived from your market intelligence clusters</p>
         </div>
-        <button
-          onClick={copyBrief}
-          className="text-xs border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-3 py-1.5 rounded-lg font-medium transition-colors"
-        >
+        <Button variant="outline" size="sm" onClick={copyBrief}>
           {copied ? '✓ Copied!' : '📋 Copy full brief'}
-        </button>
+        </Button>
       </div>
       <div className="space-y-3">
         {brief.map((b, i) => (
-          <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-start gap-4">
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0 text-base">
-              {getSectorIcon(b.theme)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                <p className="text-sm font-semibold text-slate-900 truncate">{b.theme}</p>
-                <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full flex-shrink-0">
-                  {FORMAT_MAP[b.format] ?? b.format}
-                </span>
+          <Card key={i}>
+            <CardContent className="py-4 flex items-start gap-4">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/15 flex items-center justify-center flex-shrink-0 text-base">
+                {getSectorIcon(b.theme)}
               </div>
-              <p className="text-xs text-slate-600 mb-1.5 leading-relaxed">{b.hook}</p>
-              {b.opportunity && (
-                <p className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1">
-                  BD angle: {b.opportunity.slice(0, 120)}{b.opportunity.length > 120 ? '…' : ''}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                  <p className="text-sm font-semibold text-foreground truncate">{b.theme}</p>
+                  <Badge variant="default" size="sm">{FORMAT_MAP[b.format] ?? b.format}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mb-1.5 leading-relaxed">{b.hook}</p>
+                {b.opportunity && (
+                  <p className="text-[10px] text-success bg-success-subtle border border-success/20 rounded-md px-2 py-1">
+                    BD angle: {b.opportunity.slice(0, 120)}{b.opportunity.length > 120 ? '…' : ''}
+                  </p>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1.5">
+                  Audience: {b.audience}
                 </p>
-              )}
-              <p className="text-[10px] text-slate-400 mt-1.5">
-                Audience: {b.audience}
-              </p>
-            </div>
-            <Link
-              href="/linkedin"
-              className="text-[10px] font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 whitespace-nowrap"
-            >
-              Generate post →
-            </Link>
-          </div>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/linkedin">Generate post →</Link>
+              </Button>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
@@ -222,7 +223,6 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pipelineMap, setPipelineMap] = useState<Record<string, string>>({});
-  const [activeTab, setActiveTab] = useState<'intelligence' | 'editorial'>('intelligence');
 
   useEffect(() => {
     Promise.all([getMarketTrends(), listPipelines()])
@@ -239,141 +239,129 @@ export default function TrendsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       {/* Page header */}
-      <div className="bg-white border-b border-slate-200 px-8 py-6">
+      <div className="bg-card border-b border-border px-8 py-5">
         <div className="max-w-5xl mx-auto flex items-center justify-between flex-wrap gap-4">
           <div className="animate-fade-in">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Market Intelligence</h1>
-            <p className="text-slate-500 text-sm mt-0.5">
-              AI-clustered insights across every company you&apos;ve researched — powered by Qdrant vector similarity
+            <h1 className="text-xl font-bold text-foreground tracking-tight">Market Intelligence</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              Powered by vector similarity clustering
             </p>
           </div>
           {!loading && !error && data && (
-            <div className="flex items-center gap-3 animate-fade-in">
-              <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 text-center">
-                <p className="text-lg font-bold text-indigo-700 tabular-nums">{data.total_companies_analyzed}</p>
-                <p className="text-[10px] text-indigo-500 font-medium uppercase tracking-wide">companies</p>
-              </div>
+            <div className="flex items-center gap-2 animate-fade-in">
+              <Badge variant="default" size="lg" className="tabular-nums gap-1.5">
+                <BarChart className="w-3.5 h-3.5" />
+                {data.total_companies_analyzed} companies analysed
+              </Badge>
               {data.clusters.length > 0 && (
-                <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-2 text-center">
-                  <p className="text-lg font-bold text-emerald-700 tabular-nums">{data.clusters.length}</p>
-                  <p className="text-[10px] text-emerald-500 font-medium uppercase tracking-wide">clusters</p>
-                </div>
+                <Badge variant="success" size="lg">
+                  {data.clusters.length} clusters
+                </Badge>
               )}
             </div>
           )}
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-8 py-8">
+      <div className="max-w-5xl mx-auto px-8 py-6">
         {loading && <LoadingSkeleton />}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-700 animate-fade-in">
-            ⚠️ {error}
-          </div>
+          <Card className="p-5 border-danger/30 bg-danger-subtle animate-fade-in">
+            <p className="text-danger text-sm">Something went wrong: {error}</p>
+          </Card>
         )}
 
         {!loading && !error && data && (
           <>
             {/* Empty state */}
             {(!data.clusters || data.clusters.length === 0) ? (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-16 text-center animate-scale-in">
-                <div className="w-16 h-16 mx-auto bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl flex items-center justify-center mb-5 text-3xl">
-                  📊
-                </div>
-                <h3 className="text-slate-800 font-semibold text-lg mb-2">Building your intelligence base</h3>
-                <p className="text-slate-500 text-sm max-w-sm mx-auto mb-2">
-                  {data.overall_summary || 'Analyse at least 3 companies to unlock AI-clustered market trends and cross-portfolio BD opportunities.'}
-                </p>
-                <p className="text-slate-400 text-xs mb-8">
-                  {data.total_companies_analyzed} of 3 companies needed
-                </p>
-                <div className="w-full max-w-xs mx-auto bg-slate-100 rounded-full h-1.5 mb-8">
-                  <div
-                    className="bg-indigo-500 h-1.5 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, (data.total_companies_analyzed / 3) * 100)}%` }}
-                  />
-                </div>
-                <Link href="/analyze" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm shadow-indigo-900/20">
-                  Start Analysis →
-                </Link>
+              <div className="flex items-center justify-center py-20 animate-fade-in">
+                <Card className="max-w-md w-full text-center">
+                  <CardContent className="py-12 flex flex-col items-center">
+                    <div className="w-16 h-16 mx-auto bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/15 rounded-2xl flex items-center justify-center mb-5">
+                      <TrendingUp className="w-8 h-8 text-primary" />
+                    </div>
+                    <h3 className="text-foreground font-semibold text-lg mb-2">Building your intelligence base</h3>
+                    <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-2">
+                      {data.overall_summary || 'Analyse at least 3 companies to unlock AI-clustered market trends and cross-portfolio BD opportunities.'}
+                    </p>
+                    <p className="text-muted-foreground text-xs mb-6">
+                      {data.total_companies_analyzed} of 3 companies needed
+                    </p>
+                    <Button asChild>
+                      <Link href="/analyze">Start Analysis</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
               </div>
             ) : (
               <div className="space-y-6">
                 {/* Overall summary callout */}
                 {data.overall_summary && (
-                  <div className="bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 rounded-xl p-6 animate-fade-in">
+                  <Card className="p-5 animate-fade-in border-primary/20 bg-gradient-to-br from-primary/5 to-primary/[0.02]">
                     <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0 text-indigo-600">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary">
+                        <TrendingUp className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500 mb-2">Portfolio Overview</p>
-                        <p className="text-sm text-indigo-900 leading-relaxed">{data.overall_summary}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-primary mb-1.5">Portfolio Overview</p>
+                        <p className="text-sm text-foreground leading-relaxed">{data.overall_summary}</p>
                       </div>
                     </div>
-                  </div>
+                  </Card>
                 )}
 
                 {/* Tab switcher */}
-                <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
-                  {(['intelligence', 'editorial'] as const).map(tab => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-                        activeTab === tab
-                          ? 'bg-white text-slate-800 shadow-sm'
-                          : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      {tab === 'intelligence' ? '📊 Market Clusters' : '✍️ Content Brief'}
-                    </button>
-                  ))}
-                </div>
+                <Tabs defaultValue="intelligence">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <TabsList>
+                      <TabsTrigger value="intelligence">
+                        <BarChart className="w-3.5 h-3.5" />
+                        Market Clusters
+                      </TabsTrigger>
+                      <TabsTrigger value="editorial">
+                        ✍️ Content Brief
+                      </TabsTrigger>
+                    </TabsList>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href="/analyze">
+                        <Search className="w-3.5 h-3.5" />
+                        Add company
+                      </Link>
+                    </Button>
+                  </div>
 
-                {/* Market intelligence tab */}
-                {activeTab === 'intelligence' && (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  {/* Market intelligence tab */}
+                  <TabsContent value="intelligence">
+                    <div className="space-y-4">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                         Trend Clusters — {data.clusters.length} identified
                       </p>
-                      <Link href="/analyze" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
-                        Add company
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                      </Link>
-                    </div>
-                    <div className="space-y-4">
                       {data.clusters.map((cluster, i) => (
                         <ClusterCard key={i} cluster={cluster} index={i} pipelineMap={pipelineMap} />
                       ))}
                     </div>
-                  </>
-                )}
+                  </TabsContent>
 
-                {/* Content Brief tab */}
-                {activeTab === 'editorial' && (
-                  <ContentBrief clusters={data.clusters} />
-                )}
+                  {/* Content Brief tab */}
+                  <TabsContent value="editorial">
+                    <ContentBrief clusters={data.clusters} />
+                  </TabsContent>
+                </Tabs>
 
                 {/* Footer CTA */}
-                <div className="bg-slate-800 rounded-xl p-6 text-center">
-                  <p className="text-slate-300 text-sm mb-1 font-medium">Keep building your intelligence base</p>
-                  <p className="text-slate-500 text-xs mb-4">Every new pipeline refines the clusters and sharpens cross-portfolio opportunities.</p>
-                  <Link href="/analyze" className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    Analyse another company
-                  </Link>
+                <div className="bg-foreground rounded-2xl p-6 text-center">
+                  <p className="text-card text-sm mb-1 font-medium">Keep building your intelligence base</p>
+                  <p className="text-card/60 text-xs mb-4">Every new pipeline refines the clusters and sharpens cross-portfolio opportunities.</p>
+                  <Button asChild className="bg-primary hover:bg-primary/90">
+                    <Link href="/analyze">
+                      <Search className="w-4 h-4" />
+                      Analyse another company
+                    </Link>
+                  </Button>
                 </div>
               </div>
             )}

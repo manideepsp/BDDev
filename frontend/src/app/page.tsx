@@ -2,91 +2,161 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import {
+  BarChart3,
+  Zap,
+  CheckCircle2,
+  TrendingUp,
+  Plus,
+  Users,
+  ArrowRight,
+  Search,
+  ExternalLink,
+} from 'lucide-react';
 import { listPipelines, getStats, Pipeline, Stats } from '@/lib/api';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 // ── Status display maps ──────────────────────────────────────────────────────
 
-const STATUS_STYLES: Record<string, string> = {
-  pending:       'bg-slate-100 text-slate-500',
-  gathering:     'bg-sky-100 text-sky-700',
-  people:        'bg-indigo-100 text-indigo-700',
-  keywords:      'bg-purple-100 text-purple-700',
-  researching:   'bg-amber-100 text-amber-700',
-  indexing:      'bg-violet-100 text-violet-700',
-  awaiting_input:'bg-amber-100 text-amber-800 font-semibold',
-  insights:      'bg-orange-100 text-orange-700',
-  embedding:     'bg-violet-100 text-violet-700',
-  complete:      'bg-emerald-100 text-emerald-700',
-  failed:        'bg-red-100 text-red-700',
-  scraping:      'bg-sky-100 text-sky-700',
-  linkedin:      'bg-indigo-100 text-indigo-700',
+type BadgeVariant =
+  | 'default'
+  | 'secondary'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'muted'
+  | 'complete'
+  | 'active'
+  | 'failed'
+  | 'pending';
+
+const STATUS_BADGE_VARIANT: Record<string, BadgeVariant> = {
+  pending:        'pending',
+  gathering:      'active',
+  people:         'active',
+  keywords:       'active',
+  researching:    'active',
+  indexing:       'active',
+  awaiting_input: 'warning',
+  insights:       'active',
+  embedding:      'active',
+  complete:       'complete',
+  failed:         'failed',
+  scraping:       'active',
+  linkedin:       'active',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending:       'Pending',
-  gathering:     'Gathering',
-  people:        'People Swarm',
-  keywords:      'Keywords',
-  researching:   'Researching',
-  indexing:      'Indexing',
-  awaiting_input:'Needs Review ✋',
-  insights:      'Synthesising',
-  embedding:     'Embedding',
-  complete:      'Complete',
-  failed:        'Failed',
-  scraping:      'Scraping',
-  linkedin:      'LinkedIn',
+  pending:        'Pending',
+  gathering:      'Gathering',
+  people:         'People Swarm',
+  keywords:       'Keywords',
+  researching:    'Researching',
+  indexing:       'Indexing',
+  awaiting_input: 'Needs Review',
+  insights:       'Synthesising',
+  embedding:      'Embedding',
+  complete:       'Complete',
+  failed:         'Failed',
+  scraping:       'Scraping',
+  linkedin:       'LinkedIn',
 };
 
 const ACTIVE_STATUSES = new Set([
-  'pending', 'gathering', 'people', 'keywords', 'researching', 'indexing', 'insights', 'embedding',
+  'pending', 'gathering', 'people', 'keywords',
+  'researching', 'indexing', 'insights', 'embedding',
 ]);
 
 // ── Stat card ────────────────────────────────────────────────────────────────
 
 function StatCard({
-  label, value, icon, accent, delay, pulse,
+  label,
+  value,
+  icon,
+  accentClass,
+  iconBgClass,
+  delay,
+  pulse,
 }: {
-  label: string; value: string | number; icon: React.ReactNode;
-  accent: string; delay: string; pulse?: boolean;
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+  accentClass: string;
+  iconBgClass: string;
+  delay?: string;
+  pulse?: boolean;
 }) {
   return (
-    <div className={`bg-white rounded-xl border border-slate-200 p-5 shadow-sm animate-slide-up ${delay} relative overflow-hidden`}>
-      <div className={`absolute inset-x-0 top-0 h-0.5 ${accent}`} />
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${accent.replace('bg-gradient-to-r', 'bg').split(' ')[0]}/10`}>
-          {icon}
+    <Card className={cn('relative overflow-hidden animate-slide-up', delay)}>
+      <div className={cn('absolute inset-x-0 top-0 h-1 rounded-t-2xl', accentClass)} />
+      <CardContent className="pt-6 pb-5">
+        <div className="flex items-start justify-between mb-4">
+          <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', iconBgClass)}>
+            {icon}
+          </div>
+          {pulse && (
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold text-success uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-success animate-live-pulse" />
+              live
+            </span>
+          )}
         </div>
-        {pulse && (
-          <span className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-live-pulse" />
-            live
-          </span>
-        )}
-      </div>
-      <div className="text-3xl font-bold text-slate-900 tracking-tight">{value}</div>
-      <div className="text-slate-500 text-xs mt-0.5 font-medium">{label}</div>
+        <div className="text-3xl font-bold text-foreground tracking-tight tabular-nums">{value}</div>
+        <div className="text-muted-foreground text-xs mt-1 font-medium">{label}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Company avatar with initials ─────────────────────────────────────────────
+
+function CompanyAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase() ?? '')
+    .join('');
+  return (
+    <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+      <span className="text-[11px] font-bold text-primary">{initials}</span>
     </div>
   );
 }
 
-// ── Mini engagement ring for table ──────────────────────────────────────────
+// ── Mini engagement ring ─────────────────────────────────────────────────────
 
 function MiniRing({ score }: { score: number }) {
   const r = 10;
   const c = 2 * Math.PI * r;
   const fill = (score / 100) * c;
-  const color = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+  const strokeColor = score >= 75 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
+  const textColorClass =
+    score >= 75 ? 'text-success' : score >= 50 ? 'text-warning-foreground' : 'text-danger';
   return (
     <div className="flex items-center gap-1.5">
       <svg width="28" height="28" viewBox="0 0 28 28">
-        <circle cx="14" cy="14" r={r} fill="none" stroke="#f1f5f9" strokeWidth="3" />
-        <circle cx="14" cy="14" r={r} fill="none" stroke={color} strokeWidth="3"
-          strokeDasharray={`${fill} ${c - fill}`} strokeDashoffset={c / 4} strokeLinecap="round" />
-        <text x="14" y="14" textAnchor="middle" dominantBaseline="central" fontSize="7" fontWeight="700" fill={color}>
+        <circle cx="14" cy="14" r={r} fill="none" stroke="#e2e8f0" strokeWidth="3" />
+        <circle
+          cx="14" cy="14" r={r} fill="none"
+          stroke={strokeColor} strokeWidth="3"
+          strokeDasharray={`${fill} ${c - fill}`}
+          strokeDashoffset={c / 4}
+          strokeLinecap="round"
+        />
+        <text
+          x="14" y="14" textAnchor="middle" dominantBaseline="central"
+          fontSize="7" fontWeight="700" fill={strokeColor}
+        >
           {score}
         </text>
       </svg>
+      <span className={cn('text-xs font-semibold tabular-nums hidden lg:inline', textColorClass)}>
+        {score}
+      </span>
     </div>
   );
 }
@@ -108,210 +178,232 @@ export default function Dashboard() {
   const activePipelines = stats?.active_pipelines ?? 0;
   const avgScore = stats?.avg_engagement_score ?? 0;
 
-  const STATS = [
-    {
-      label: 'Total Analyses',
-      value: stats?.total_pipelines ?? '—',
-      accent: 'bg-gradient-to-r from-slate-400 to-slate-500',
-      delay: '',
-      icon: (
-        <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-    },
-    {
-      label: 'Active Pipelines',
-      value: activePipelines,
-      accent: 'bg-gradient-to-r from-indigo-400 to-violet-500',
-      delay: 'anim-delay-1',
-      pulse: activePipelines > 0,
-      icon: (
-        <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-      ),
-    },
-    {
-      label: 'Completed',
-      value: stats?.completed_pipelines ?? '—',
-      accent: 'bg-gradient-to-r from-emerald-400 to-teal-500',
-      delay: 'anim-delay-2',
-      icon: (
-        <svg className="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-    },
-    {
-      label: 'Avg BD Score',
-      value: avgScore > 0 ? avgScore : '—',
-      accent: avgScore >= 70
-        ? 'bg-gradient-to-r from-amber-400 to-orange-500'
-        : 'bg-gradient-to-r from-slate-300 to-slate-400',
-      delay: 'anim-delay-3',
-      icon: (
-        <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-        </svg>
-      ),
-    },
-  ];
-
   return (
-    <div className="p-8 max-w-6xl animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Your BD intelligence command centre
-            {activePipelines > 0 && (
-              <span className="ml-2 inline-flex items-center gap-1 text-indigo-600 font-medium">
-                · <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-live-pulse inline-block" />
-                {activePipelines} running
+    <div className="min-h-screen bg-background animate-fade-in">
+      {/* Page header */}
+      <div className="bg-card border-b border-border px-8 py-5">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              <span className="text-foreground">BD </span>
+              <span className="bg-gradient-to-r from-primary to-violet-500 bg-clip-text text-transparent">
+                Dashboard
               </span>
-            )}
-          </p>
-        </div>
-        <Link href="/analyze"
-          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          New Analysis
-        </Link>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {STATS.map((s) => (
-          <StatCard key={s.label} {...s} />
-        ))}
-      </div>
-
-      {/* Prospects identified — secondary stat */}
-      {(stats?.total_prospects_identified ?? 0) > 0 && (
-        <div className="mb-6 bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-3.5 flex items-center gap-3 animate-slide-up anim-delay-4">
-          <svg className="w-4 h-4 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" />
-          </svg>
-          <span className="text-sm text-indigo-800">
-            <span className="font-bold">{stats!.total_prospects_identified}</span> prospects identified across all analyses
-          </span>
-          <Link href="/trends" className="ml-auto text-xs text-indigo-600 hover:text-indigo-800 font-medium whitespace-nowrap">
-            View market trends →
-          </Link>
-        </div>
-      )}
-
-      {/* Pipeline table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">Analysis Pipeline</h2>
-          <span className="text-slate-400 text-sm">{pipelines.length} {pipelines.length === 1 ? 'company' : 'companies'}</span>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-16 gap-3 text-slate-400 text-sm">
-            <div className="w-4 h-4 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
-            Loading pipelines...
+            </h1>
+            <p className="text-muted-foreground text-sm mt-0.5 flex items-center gap-2">
+              Your intelligence command centre
+              {activePipelines > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-primary font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-live-pulse" />
+                  {activePipelines} running
+                </span>
+              )}
+            </p>
           </div>
-        ) : pipelines.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4 text-center px-6">
-            <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center">
-              <svg className="w-8 h-8 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-slate-700 font-semibold">No analyses yet</p>
-              <p className="text-slate-400 text-sm mt-1 max-w-xs">
-                Enter a company name and your offering — a multi-agent swarm handles the rest in ~30 seconds.
-              </p>
-            </div>
-            <Link href="/analyze"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors">
-              Start your first analysis →
+          <Button asChild size="lg">
+            <Link href="/analyze">
+              <Plus className="w-4 h-4" />
+              New Analysis
             </Link>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-50">
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Company</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider hidden md:table-cell">Score</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider hidden sm:table-cell">Prospects</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {pipelines.map((p) => {
-                  const isActive = ACTIVE_STATUSES.has(p.status);
-                  const score = p.intelligence?.engagement_score?.score ?? 0;
-                  const prospectCount = p.prospects?.length ?? p.intelligence?.prospects?.length;
+          </Button>
+        </div>
+      </div>
 
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-50/70 transition-colors group">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {isActive && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-live-pulse flex-shrink-0" />
-                          )}
-                          <div>
-                            <div className="font-semibold text-slate-900 text-sm">{p.company_name}</div>
-                            {p.company_url && (
-                              <div className="text-slate-400 text-xs mt-0.5 truncate max-w-[180px]">
-                                {p.company_url.replace(/^https?:\/\//, '')}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </td>
+      <div className="max-w-6xl mx-auto px-8 py-6 space-y-6">
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Total Analyses"
+            value={stats?.total_pipelines ?? '—'}
+            accentClass="bg-muted-foreground/40"
+            iconBgClass="bg-muted"
+            icon={<BarChart3 className="w-5 h-5 text-muted-foreground" />}
+          />
+          <StatCard
+            label="Active Pipelines"
+            value={activePipelines}
+            accentClass="bg-primary"
+            iconBgClass="bg-primary/10"
+            icon={<Zap className="w-5 h-5 text-primary" />}
+            delay="anim-delay-1"
+            pulse={activePipelines > 0}
+          />
+          <StatCard
+            label="Completed"
+            value={stats?.completed_pipelines ?? '—'}
+            accentClass="bg-success"
+            iconBgClass="bg-success-subtle"
+            icon={<CheckCircle2 className="w-5 h-5 text-success" />}
+            delay="anim-delay-2"
+          />
+          <StatCard
+            label="Avg BD Score"
+            value={avgScore > 0 ? avgScore : '—'}
+            accentClass={avgScore >= 70 ? 'bg-warning' : 'bg-muted-foreground/40'}
+            iconBgClass="bg-warning-subtle"
+            icon={<TrendingUp className="w-5 h-5 text-warning-foreground" />}
+            delay="anim-delay-3"
+          />
+        </div>
 
-                      <td className="px-6 py-4">
-                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${
-                          STATUS_STYLES[p.status] ?? 'bg-slate-100 text-slate-500'
-                        }`}>
-                          {STATUS_LABELS[p.status] ?? p.status}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-4 hidden md:table-cell">
-                        {score > 0 ? <MiniRing score={score} /> : (
-                          <span className="text-slate-300 text-xs">—</span>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 hidden sm:table-cell">
-                        <span className="text-slate-600 text-sm font-medium">
-                          {prospectCount != null ? prospectCount : '—'}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <span className="text-slate-400 text-sm">
-                          {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-right">
-                        <Link href={`/pipeline/${p.id}`}
-                          className="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors">
-                          View →
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        {/* Prospects banner */}
+        {(stats?.total_prospects_identified ?? 0) > 0 && (
+          <div className="bg-primary/5 border border-primary/20 rounded-2xl px-5 py-3.5 flex items-center gap-3 animate-slide-up anim-delay-4">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Users className="w-4 h-4 text-primary" />
+            </div>
+            <span className="text-sm text-foreground">
+              <span className="font-bold text-primary">{stats!.total_prospects_identified}</span>
+              <span className="text-muted-foreground ml-1">prospects identified across all analyses</span>
+            </span>
+            <Button asChild variant="link" size="sm" className="ml-auto text-primary whitespace-nowrap">
+              <Link href="/trends">
+                View market trends
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </Button>
           </div>
         )}
+
+        {/* Pipeline table */}
+        <Card className="overflow-hidden animate-slide-up anim-delay-1">
+          <CardHeader className="flex-row items-center justify-between py-4">
+            <CardTitle>Analysis Pipeline</CardTitle>
+            <span className="text-muted-foreground text-sm font-normal">
+              {pipelines.length} {pipelines.length === 1 ? 'company' : 'companies'}
+            </span>
+          </CardHeader>
+
+          {loading ? (
+            <div className="px-6 py-6 space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex items-center gap-4">
+                  <Skeleton className="w-8 h-8 rounded-lg flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                  <Skeleton className="h-4 w-12" />
+                </div>
+              ))}
+            </div>
+          ) : pipelines.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4 text-center px-6">
+              <div className="w-16 h-16 bg-primary/5 border border-primary/20 rounded-2xl flex items-center justify-center">
+                <Search className="w-8 h-8 text-primary/40" />
+              </div>
+              <div>
+                <p className="text-foreground font-semibold text-base">No analyses yet</p>
+                <p className="text-muted-foreground text-sm mt-1.5 max-w-xs leading-relaxed">
+                  Enter a company name and your offering — a multi-agent swarm handles the rest in ~30 seconds.
+                </p>
+              </div>
+              <Button asChild size="lg">
+                <Link href="/analyze">
+                  <Plus className="w-4 h-4" />
+                  Start your first analysis
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="px-6 py-3 text-left">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Company</p>
+                    </th>
+                    <th className="px-6 py-3 text-left">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Status</p>
+                    </th>
+                    <th className="px-4 py-3 text-left hidden md:table-cell">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Score</p>
+                    </th>
+                    <th className="px-6 py-3 text-left hidden sm:table-cell">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Prospects</p>
+                    </th>
+                    <th className="px-6 py-3 text-left">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Date</p>
+                    </th>
+                    <th className="px-6 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {pipelines.map((p) => {
+                    const isActive = ACTIVE_STATUSES.has(p.status);
+                    const score = p.intelligence?.engagement_score?.score ?? 0;
+                    const prospectCount = p.prospects?.length ?? p.intelligence?.prospects?.length;
+                    const badgeVariant: BadgeVariant = STATUS_BADGE_VARIANT[p.status] ?? 'muted';
+
+                    return (
+                      <tr key={p.id} className="hover:bg-muted/50 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <CompanyAvatar name={p.company_name} />
+                              {isActive && (
+                                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary border-2 border-card animate-live-pulse" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-foreground text-sm">{p.company_name}</div>
+                              {p.company_url && (
+                                <div className="text-muted-foreground text-xs mt-0.5 truncate max-w-[180px]">
+                                  {p.company_url.replace(/^https?:\/\//, '')}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <Badge variant={badgeVariant}>
+                            {STATUS_LABELS[p.status] ?? p.status}
+                          </Badge>
+                        </td>
+
+                        <td className="px-4 py-4 hidden md:table-cell">
+                          {score > 0 ? (
+                            <MiniRing score={score} />
+                          ) : (
+                            <span className="text-muted-foreground/50 text-xs">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 hidden sm:table-cell">
+                          <span className="text-foreground text-sm font-medium tabular-nums">
+                            {prospectCount != null ? prospectCount : '—'}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className="text-muted-foreground text-sm">
+                            {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4 text-right">
+                          <Button
+                            asChild
+                            variant="ghost"
+                            size="sm"
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Link href={`/pipeline/${p.id}`}>
+                              View
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );

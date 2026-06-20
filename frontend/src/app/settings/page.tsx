@@ -1,6 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { Save, CheckCircle2, Loader2, X, Plus } from 'lucide-react';
 import { getCompanyProfile, saveCompanyProfile, CompanyProfile } from '@/lib/api';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 const SERVICE_OPTIONS = [
   'Custom Software Development', 'Cloud Migration (AWS / Azure / GCP)', 'AI / ML Engineering',
@@ -30,21 +37,82 @@ const EMPTY: CompanyProfile = {
   brand_voice_forbidden: '',
 };
 
-function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+// Tag input component
+function TagPills({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: string[];
+  selected: string[];
+  onToggle: (val: string) => void;
+}) {
+  const [customInput, setCustomInput] = useState('');
+
+  function addCustom() {
+    const trimmed = customInput.trim();
+    if (trimmed && !selected.includes(trimmed)) {
+      onToggle(trimmed);
+    }
+    setCustomInput('');
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-        active
-          ? 'bg-indigo-600 text-white border-indigo-600'
-          : 'text-slate-600 border-slate-200 hover:border-indigo-300'
-      }`}
-    >
-      {active ? '✓ ' : ''}{label}
-    </button>
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {options.map(opt => {
+          const active = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => onToggle(opt)}
+              className={cn(
+                'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border font-medium transition-all',
+                active
+                  ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                  : 'bg-card text-muted-foreground border-border hover:border-primary/40 hover:text-foreground'
+              )}
+            >
+              {active && <CheckCircle2 className="w-3 h-3" />}
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      {/* Selected custom items not in options */}
+      {selected.filter(s => !options.includes(s)).length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selected.filter(s => !options.includes(s)).map(s => (
+            <Badge key={s} variant="secondary" className="gap-1.5 pr-1">
+              {s}
+              <button type="button" onClick={() => onToggle(s)} className="hover:text-danger ml-0.5">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Input
+          value={customInput}
+          onChange={e => setCustomInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+          placeholder="Add custom..."
+          className="max-w-xs"
+        />
+        <Button type="button" variant="outline" size="sm" onClick={addCustom} disabled={!customInput.trim()}>
+          <Plus className="w-3.5 h-3.5" />
+          Add
+        </Button>
+      </div>
+    </div>
   );
 }
+
+const textareaCls = 'w-full rounded-lg border border-input bg-card px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground shadow-xs transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none';
+const labelCls = 'block text-sm font-medium text-foreground mb-1.5';
+const sublabelCls = 'ml-1.5 text-xs font-normal text-muted-foreground';
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<CompanyProfile>(EMPTY);
@@ -80,178 +148,288 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center gap-3 text-slate-500">
-        <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        Loading profile...
+      <div className="min-h-screen bg-background">
+        <div className="bg-card border-b border-border px-8 py-5">
+          <Skeleton className="h-6 w-48 mb-2" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <div className="max-w-3xl mx-auto px-8 py-6 space-y-6">
+          {[1, 2, 3].map(i => (
+            <Card key={i} className="p-6">
+              <Skeleton className="h-5 w-32 mb-4" />
+              <div className="space-y-3">
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
 
-  const inputCls = 'w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
-
   return (
-    <div className="p-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Your Company Profile</h1>
-        <p className="text-slate-500 mt-1 text-sm">
-          Fill this once. Every analysis personalizes its pain points, ICP score, and pitch assets against what you actually offer.
-        </p>
+    <div className="min-h-screen bg-background">
+      {/* Page header */}
+      <div className="bg-card border-b border-border px-8 py-5">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="text-xl font-bold text-foreground tracking-tight">Company Profile</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Fill this once. Every analysis personalizes its pain points, ICP score, and pitch assets against what you actually offer.
+          </p>
+        </div>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6">
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Company Name</label>
-              <input className={inputCls} value={profile.company_name}
-                onChange={e => setProfile(p => ({ ...p, company_name: e.target.value }))} placeholder="Cognine Technologies" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Type</label>
-              <input className={inputCls} value={profile.company_type}
-                onChange={e => setProfile(p => ({ ...p, company_type: e.target.value }))} placeholder="IT Services / Product Engineering" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Team Size</label>
-              <input className={inputCls} value={profile.team_size}
-                onChange={e => setProfile(p => ({ ...p, team_size: e.target.value }))} placeholder="50-200" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Headquarters</label>
-              <input className={inputCls} value={profile.headquarters}
-                onChange={e => setProfile(p => ({ ...p, headquarters: e.target.value }))} placeholder="Hyderabad, India" />
-            </div>
-          </div>
-        </div>
+      <form onSubmit={handleSave}>
+        <div className="max-w-3xl mx-auto px-8 py-6 space-y-6">
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Services</p>
-          <div className="flex flex-wrap gap-2">
-            {SERVICE_OPTIONS.map(s => (
-              <Chip key={s} label={s} active={profile.services.includes(s)} onClick={() => toggle('services', s)} />
-            ))}
-          </div>
-        </div>
+          {/* ── Company Info ─────────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Company Info</CardTitle>
+              <CardDescription>Basic details about your organisation</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Company Name</label>
+                  <Input
+                    value={profile.company_name}
+                    onChange={e => setProfile(p => ({ ...p, company_name: e.target.value }))}
+                    placeholder="Cognine Technologies"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Type</label>
+                  <Input
+                    value={profile.company_type}
+                    onChange={e => setProfile(p => ({ ...p, company_type: e.target.value }))}
+                    placeholder="IT Services / Product Engineering"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Team Size</label>
+                  <Input
+                    value={profile.team_size}
+                    onChange={e => setProfile(p => ({ ...p, team_size: e.target.value }))}
+                    placeholder="50-200"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Headquarters</label>
+                  <Input
+                    value={profile.headquarters}
+                    onChange={e => setProfile(p => ({ ...p, headquarters: e.target.value }))}
+                    placeholder="Hyderabad, India"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Industries Served</p>
-          <div className="flex flex-wrap gap-2">
-            {INDUSTRY_OPTIONS.map(s => (
-              <Chip key={s} label={s} active={profile.industries.includes(s)} onClick={() => toggle('industries', s)} />
-            ))}
-          </div>
-        </div>
+          {/* ── Services ─────────────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Services</CardTitle>
+              <CardDescription>Select all services your company offers</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TagPills
+                options={SERVICE_OPTIONS}
+                selected={profile.services}
+                onToggle={v => toggle('services', v)}
+              />
+            </CardContent>
+          </Card>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-3">Engagement Models</p>
-          <div className="flex flex-wrap gap-2">
-            {ENGAGEMENT_OPTIONS.map(s => (
-              <Chip key={s} label={s} active={profile.engagement_models.includes(s)} onClick={() => toggle('engagement_models', s)} />
-            ))}
-          </div>
-        </div>
+          {/* ── Industries Served ────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Industries Served</CardTitle>
+              <CardDescription>Which verticals do you target?</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TagPills
+                options={INDUSTRY_OPTIONS}
+                selected={profile.industries}
+                onToggle={v => toggle('industries', v)}
+              />
+            </CardContent>
+          </Card>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Technologies</label>
-            <textarea className={`${inputCls} resize-none`} rows={2} value={profile.technologies}
-              onChange={e => setProfile(p => ({ ...p, technologies: e.target.value }))}
-              placeholder="Backend: .NET, Node.js, Python · Cloud: AWS, Azure · Data: Snowflake, dbt · AI/ML: LangChain, MLflow" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Case Studies</label>
-            <textarea className={`${inputCls} resize-none`} rows={3} value={profile.case_studies}
-              onChange={e => setProfile(p => ({ ...p, case_studies: e.target.value }))}
-              placeholder="BFSI: real-time risk pipeline, 72h → 4h reports. Retail: AI recommendations, +22% conversion." />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">USPs (what makes you different)</label>
-            <textarea className={`${inputCls} resize-none`} rows={2} value={profile.usps}
-              onChange={e => setProfile(p => ({ ...p, usps: e.target.value }))}
-              placeholder="Dedicated teams not body-shopping · AI/ML in-house · first sprint in week 1" />
-          </div>
-        </div>
+          {/* ── Engagement Models ────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Engagement Models</CardTitle>
+              <CardDescription>How do you typically work with clients?</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {ENGAGEMENT_OPTIONS.map(opt => {
+                  const active = profile.engagement_models.includes(opt);
+                  return (
+                    <Button
+                      key={opt}
+                      type="button"
+                      variant={active ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => toggle('engagement_models', opt)}
+                    >
+                      {active && <CheckCircle2 className="w-3.5 h-3.5" />}
+                      {opt}
+                    </Button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* Brand Voice */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">Brand Voice</p>
-            <p className="text-xs text-slate-400">Controls how LinkedIn posts and outreach emails sound. Injected into every generation prompt.</p>
+          {/* ── Technical Details ─────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Technical Details</CardTitle>
+              <CardDescription>Technologies, case studies, and what makes you different</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className={labelCls}>Technologies</label>
+                <textarea
+                  className={textareaCls}
+                  rows={2}
+                  value={profile.technologies}
+                  onChange={e => setProfile(p => ({ ...p, technologies: e.target.value }))}
+                  placeholder="Backend: .NET, Node.js, Python · Cloud: AWS, Azure · Data: Snowflake, dbt · AI/ML: LangChain, MLflow"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Case Studies</label>
+                <textarea
+                  className={textareaCls}
+                  rows={3}
+                  value={profile.case_studies}
+                  onChange={e => setProfile(p => ({ ...p, case_studies: e.target.value }))}
+                  placeholder="BFSI: real-time risk pipeline, 72h → 4h reports. Retail: AI recommendations, +22% conversion."
+                />
+              </div>
+              <div>
+                <label className={labelCls}>USPs <span className={sublabelCls}>what makes you different</span></label>
+                <textarea
+                  className={textareaCls}
+                  rows={2}
+                  value={profile.usps}
+                  onChange={e => setProfile(p => ({ ...p, usps: e.target.value }))}
+                  placeholder="Dedicated teams not body-shopping · AI/ML in-house · first sprint in week 1"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ── Brand Voice ───────────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Brand Voice</CardTitle>
+              <CardDescription>Controls how LinkedIn posts and outreach emails sound. Injected into every generation prompt.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+
+              {/* Tone selector */}
+              <div>
+                <label className={labelCls}>Default Tone</label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {BRAND_VOICE_TONES.map(t => {
+                    const active = profile.brand_voice_tone === t.value;
+                    return (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => setProfile(p => ({ ...p, brand_voice_tone: t.value }))}
+                        className={cn(
+                          'text-left px-3 py-2.5 rounded-xl border transition-all',
+                          active
+                            ? 'border-primary bg-primary/5 shadow-xs ring-1 ring-primary/30'
+                            : 'border-border bg-card hover:border-primary/30 hover:bg-secondary/50'
+                        )}
+                      >
+                        <p className={cn('text-xs font-semibold', active ? 'text-primary' : 'text-foreground')}>{t.label}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug">{t.desc}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Writing rules */}
+              <div>
+                <label className={labelCls}>
+                  Writing Rules
+                  <span className={sublabelCls}>Dos and don&apos;ts injected into every prompt</span>
+                </label>
+                <textarea
+                  className={textareaCls}
+                  rows={3}
+                  value={profile.brand_voice_rules ?? ''}
+                  onChange={e => setProfile(p => ({ ...p, brand_voice_rules: e.target.value }))}
+                  placeholder="e.g. Never use buzzwords like 'synergy', 'holistic', 'leverage'. Always lead with a specific number or outcome. Keep sentences short. Never use exclamation points."
+                />
+              </div>
+
+              {/* Forbidden words */}
+              <div>
+                <label className={labelCls}>
+                  Forbidden Words / Phrases
+                  <span className={sublabelCls}>Comma-separated</span>
+                </label>
+                <Input
+                  value={profile.brand_voice_forbidden ?? ''}
+                  onChange={e => setProfile(p => ({ ...p, brand_voice_forbidden: e.target.value }))}
+                  placeholder="synergy, solutions, touch base, circle back, best-in-class, cutting-edge, leverage"
+                />
+              </div>
+
+              {/* Example writing */}
+              <div>
+                <label className={labelCls}>
+                  Example Writing
+                  <span className={sublabelCls}>A post or email your team loved — the model will match this style</span>
+                </label>
+                <textarea
+                  className={textareaCls}
+                  rows={5}
+                  value={profile.brand_voice_example ?? ''}
+                  onChange={e => setProfile(p => ({ ...p, brand_voice_example: e.target.value }))}
+                  placeholder="Paste a LinkedIn post or cold email that represents your ideal voice. The AI will use it as a style reference."
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Save footer */}
+          <div className="flex items-center gap-3 pb-6">
+            <Button type="submit" disabled={saving} size="lg">
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : saved ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  Saved!
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Profile
+                </>
+              )}
+            </Button>
+            {saved && (
+              <p className="text-success text-sm font-medium animate-fade-in">
+                Profile saved successfully
+              </p>
+            )}
           </div>
 
-          {/* Default tone */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Default Tone</label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {BRAND_VOICE_TONES.map(t => (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => setProfile(p => ({ ...p, brand_voice_tone: t.value }))}
-                  className={`text-left px-3 py-2.5 rounded-lg border transition-all ${
-                    profile.brand_voice_tone === t.value
-                      ? 'border-indigo-400 bg-indigo-50 shadow-sm'
-                      : 'border-slate-200 hover:border-indigo-200'
-                  }`}
-                >
-                  <p className={`text-xs font-medium ${profile.brand_voice_tone === t.value ? 'text-indigo-800' : 'text-slate-700'}`}>{t.label}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{t.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Writing rules */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Writing Rules
-              <span className="ml-1.5 text-xs font-normal text-slate-400">Dos and don&apos;ts injected into every prompt</span>
-            </label>
-            <textarea
-              className={`${inputCls} resize-none`}
-              rows={3}
-              value={profile.brand_voice_rules ?? ''}
-              onChange={e => setProfile(p => ({ ...p, brand_voice_rules: e.target.value }))}
-              placeholder="e.g. Never use buzzwords like 'synergy', 'holistic', 'leverage'. Always lead with a specific number or outcome. Keep sentences short. Never use exclamation points."
-            />
-          </div>
-
-          {/* Forbidden words */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Forbidden Words / Phrases
-              <span className="ml-1.5 text-xs font-normal text-slate-400">Comma-separated</span>
-            </label>
-            <input
-              className={inputCls}
-              value={profile.brand_voice_forbidden ?? ''}
-              onChange={e => setProfile(p => ({ ...p, brand_voice_forbidden: e.target.value }))}
-              placeholder="synergy, solutions, touch base, circle back, best-in-class, cutting-edge, leverage"
-            />
-          </div>
-
-          {/* Example */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Example Writing
-              <span className="ml-1.5 text-xs font-normal text-slate-400">A post or email your team loved — the model will match this style</span>
-            </label>
-            <textarea
-              className={`${inputCls} resize-none`}
-              rows={5}
-              value={profile.brand_voice_example ?? ''}
-              onChange={e => setProfile(p => ({ ...p, brand_voice_example: e.target.value }))}
-              placeholder="Paste a LinkedIn post or cold email that represents your ideal voice. The AI will use it as a style reference."
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button type="submit" disabled={saving}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-6 py-2.5 rounded-lg transition-colors">
-            {saving ? 'Saving...' : 'Save Profile'}
-          </button>
-          {saved && <span className="text-emerald-600 text-sm">✓ Saved</span>}
         </div>
       </form>
     </div>
