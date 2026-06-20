@@ -175,6 +175,11 @@ _PROSPECT_EXTRA_COLUMNS = {
 }
 _ALLOWED_COL_TYPES = {"TEXT", "INTEGER", "REAL"}
 
+_LINKEDIN_POST_EXTRA_COLUMNS = {
+    "planned_date": "TEXT",
+    "post_notes": "TEXT",
+}
+
 def _ensure_columns(conn):
     existing_pipeline = {r[1] for r in conn.execute("PRAGMA table_info(pipelines)").fetchall()}
     for col, coltype in _PIPELINE_EXTRA_COLUMNS.items():
@@ -191,6 +196,14 @@ def _ensure_columns(conn):
         if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
             raise ValueError(f"Unsafe column definition: {col} {coltype}")
         conn.execute(f"ALTER TABLE pipeline_prospects ADD COLUMN {col} {coltype}")  # nosec B608
+
+    existing_li = {r[1] for r in conn.execute("PRAGMA table_info(linkedin_posts)").fetchall()}
+    for col, coltype in _LINKEDIN_POST_EXTRA_COLUMNS.items():
+        if col in existing_li:
+            continue
+        if not col.isidentifier() or coltype not in _ALLOWED_COL_TYPES:
+            raise ValueError(f"Unsafe column definition: {col} {coltype}")
+        conn.execute(f"ALTER TABLE linkedin_posts ADD COLUMN {col} {coltype}")  # nosec B608
 
 def create_pipeline(id, company_name, company_url, user_description, sender_name=None, sender_company=None,
                     linkedin_url=None, deal_size=None, priority=None, notes=None):
@@ -405,6 +418,56 @@ def update_linkedin_post_content(post_id: str, content: str):
 def delete_linkedin_post(post_id: str):
     with get_conn() as conn:
         conn.execute("DELETE FROM linkedin_posts WHERE id=?", (post_id,))
+
+
+_ALLOWED_POST_FIELDS = {"status", "content", "char_count", "planned_date", "post_notes", "strategy", "trend_cluster"}
+
+def update_linkedin_post_fields(post_id: str, fields: dict):
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED_POST_FIELDS}
+    if not safe:
+        return
+    if "content" in safe and "char_count" not in safe:
+        safe["char_count"] = len(safe["content"])
+    sets = ", ".join(f"{k}=?" for k in safe)
+    with get_conn() as conn:
+        conn.execute(f"UPDATE linkedin_posts SET {sets} WHERE id=?",  # nosec B608
+                     (*safe.values(), post_id))
+
+
+def get_linkedin_analytics() -> dict:
+    now = datetime.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    with get_conn() as conn:
+        total_posts = conn.execute("SELECT COUNT(*) FROM linkedin_posts").fetchone()[0]
+        published = conn.execute("SELECT COUNT(*) FROM linkedin_posts WHERE status='posted'").fetchone()[0]
+        selected = conn.execute("SELECT COUNT(*) FROM linkedin_posts WHERE status='selected'").fetchone()[0]
+        this_month = conn.execute("SELECT COUNT(*) FROM linkedin_posts WHERE created_at >= ?", (month_start,)).fetchone()[0]
+        published_month = conn.execute("SELECT COUNT(*) FROM linkedin_posts WHERE status='posted' AND created_at >= ?", (month_start,)).fetchone()[0]
+        total_ideas = conn.execute("SELECT COUNT(*) FROM linkedin_post_ideas").fetchone()[0]
+        drafted_ideas = conn.execute("SELECT COUNT(*) FROM linkedin_post_ideas WHERE status IN ('drafting','drafted')").fetchone()[0]
+        targets = conn.execute("SELECT COUNT(*) FROM linkedin_targets").fetchone()[0]
+        scheduled = conn.execute("SELECT COUNT(*) FROM linkedin_posts WHERE planned_date IS NOT NULL AND planned_date != ''").fetchone()[0]
+    return {
+        "total_posts": total_posts,
+        "published": published,
+        "selected": selected,
+        "this_month_generated": this_month,
+        "this_month_published": published_month,
+        "total_ideas": total_ideas,
+        "drafted_ideas": drafted_ideas,
+        "targets_tracked": targets,
+        "scheduled_posts": scheduled,
+    }
+
+
+def get_scheduled_posts() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, content, char_count, status, planned_date, strategy, trend_cluster, created_at "
+            "FROM linkedin_posts WHERE planned_date IS NOT NULL AND planned_date != '' "
+            "ORDER BY planned_date ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def get_email_by_id(email_id: str):
