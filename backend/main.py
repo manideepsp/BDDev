@@ -663,27 +663,35 @@ async def refine_linkedin_post(post_id: str, body: LinkedInRefineRequest):
 # --- LinkedIn Intelligence Hub ---
 
 class LinkedInTargetRequest(BaseModel):
-    company_name: str
-    linkedin_url: str = ""
-    website_url: str = ""
+    company_name: str = Field(..., min_length=1, max_length=120)
+    linkedin_url: str = Field(default="", max_length=300)
+    website_url: str = Field(default="", max_length=300)
 
 class LinkedInIdeaDraftRefineRequest(BaseModel):
-    message: str
-    current_content: str
+    message: str = Field(..., min_length=1, max_length=2000)
+    current_content: str = Field(..., max_length=5000)
     history: List[dict] = []
 
 class LinkedInScoreRequest(BaseModel):
-    content: str
+    content: str = Field(..., min_length=10, max_length=5000)
 
 class LinkedInThreadRequest(BaseModel):
-    content: str
+    content: str = Field(..., min_length=10, max_length=5000)
 
 class LinkedInFirstCommentRequest(BaseModel):
-    post_content: str
+    post_content: str = Field(..., min_length=10, max_length=5000)
 
 class LinkedInRemixRequest(BaseModel):
-    original_content: str
-    company_name: str
+    original_content: str = Field(..., min_length=10, max_length=5000)
+    company_name: str = Field(..., min_length=1, max_length=120)
+
+class LinkedInFetchAnalyzeRequest(BaseModel):
+    force: bool = False
+
+class LinkedInPostUpdateRequest(BaseModel):
+    planned_date: str | None = None
+    post_notes: str | None = None
+    status: str | None = None
 
 
 @app.post("/api/v2/linkedin/targets")
@@ -708,69 +716,82 @@ async def remove_linkedin_target(target_id: str):
 
 
 @app.post("/api/v2/linkedin/fetch-analyze")
-async def fetch_and_analyze():
+async def fetch_and_analyze(body: LinkedInFetchAnalyzeRequest = Body(default_factory=LinkedInFetchAnalyzeRequest)):
     from db import (get_company_profile, list_linkedin_targets, save_fetched_posts,
-                    save_linkedin_analysis, save_linkedin_ideas)
+                    save_linkedin_analysis, save_linkedin_ideas, get_latest_linkedin_analysis,
+                    list_fetched_posts)
     from agents.posts import LinkedInPostsAgent
     from agents.linkedin_analysis import LinkedInAnalysisAgent
+
+    # Staleness check — skip re-fetch if last analysis is < 45 min old and force=False
+    if not body.force:
+        latest = get_latest_linkedin_analysis()
+        if latest and latest.get("_fetched_at"):
+            try:
+                age = (datetime.now() - datetime.fromisoformat(latest["_fetched_at"])).total_seconds()
+                if age < 2700:  # 45 minutes
+                    latest["fetched_posts"] = list_fetched_posts()
+                    return {
+                        "analysis_id": None,
+                        "fetched_count": len(latest["fetched_posts"]),
+                        "analysis": latest,
+                        "fetched_posts": latest["fetched_posts"],
+                        "skipped": True,
+                        "age_minutes": round(age / 60),
+                    }
+            except Exception:
+                pass
 
     company_profile = get_company_profile() or {}
     own_company = company_profile.get("company_name", "")
     targets = list_linkedin_targets()
 
-    posts_agent = LinkedInPostsAgent()
-    all_fetched: list[dict] = []
+    # Parallel fetch: all companies at once using asyncio executor
+    loop = asyncio.get_event_loop()
 
-    # Fetch own company posts
+    async def fetch_one(company_name: str, company_url: str, source_type: str) -> list[dict]:
+        agent = LinkedInPostsAgent()
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: agent.run(company_name=company_name, lookback_months=3, limit=10, company_url=company_url or "")
+            )
+            posts = []
+            for p in result.get("posts", []):
+                posts.append({
+                    "id": str(uuid.uuid4()),
+                    "source_type": source_type,
+                    "company_name": company_name,
+                    "title": p.get("title", ""),
+                    "content": p.get("text", ""),
+                    "published_date": p.get("date", ""),
+                    "post_url": p.get("url", ""),
+                })
+            return posts
+        except Exception as e:
+            logger.warning(f"Fetch failed for {company_name}: {e}")
+            return []
+
+    tasks = []
     if own_company:
-        try:
-            result = posts_agent.run(
-                company_name=own_company,
-                lookback_months=3,
-                limit=10,
-                company_url=company_profile.get("website_url", ""),
-            )
-            for p in result.get("posts", []):
-                all_fetched.append({
-                    "id": str(uuid.uuid4()),
-                    "source_type": "own",
-                    "company_name": own_company,
-                    "title": p.get("title", ""),
-                    "content": p.get("text", ""),
-                    "published_date": p.get("date", ""),
-                    "post_url": p.get("url", ""),
-                })
-        except Exception as e:
-            logger.warning(f"Own company fetch failed: {e}")
-
-    # Fetch target company posts
+        tasks.append(fetch_one(own_company, company_profile.get("website_url", ""), "own"))
     for target in targets:
-        try:
-            result = posts_agent.run(
-                company_name=target["company_name"],
-                lookback_months=3,
-                limit=10,
-                company_url=target.get("website_url", ""),
-            )
-            for p in result.get("posts", []):
-                all_fetched.append({
-                    "id": str(uuid.uuid4()),
-                    "source_type": "target",
-                    "company_name": target["company_name"],
-                    "title": p.get("title", ""),
-                    "content": p.get("text", ""),
-                    "published_date": p.get("date", ""),
-                    "post_url": p.get("url", ""),
-                })
-        except Exception as e:
-            logger.warning(f"Target fetch failed for {target['company_name']}: {e}")
+        tasks.append(fetch_one(target["company_name"], target.get("website_url", ""), "target"))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    all_fetched: list[dict] = []
+    for r in results:
+        if isinstance(r, list):
+            all_fetched.extend(r)
 
     save_fetched_posts(all_fetched)
 
-    analysis = LinkedInAnalysisAgent(client).run(own_company or "your company", all_fetched)
+    analysis = await loop.run_in_executor(
+        None,
+        lambda: LinkedInAnalysisAgent(client).run(own_company or "your company", all_fetched)
+    )
     analysis_id = save_linkedin_analysis(analysis)
 
-    # Save post ideas to DB
     ideas = analysis.get("post_ideas", [])
     if ideas:
         save_linkedin_ideas(ideas)
@@ -780,6 +801,7 @@ async def fetch_and_analyze():
         "fetched_count": len(all_fetched),
         "analysis": analysis,
         "fetched_posts": all_fetched,
+        "skipped": False,
     }
 
 
@@ -867,6 +889,106 @@ async def publish_idea_as_post(idea_id: str):
     })
     update_linkedin_idea_status(idea_id, "drafted")
     return {"post_id": post_id}
+
+
+@app.patch("/api/v2/linkedin/posts/{post_id}")
+async def update_linkedin_post(post_id: str, body: LinkedInPostUpdateRequest):
+    from db import update_linkedin_post_fields
+    fields: dict = {}
+    if body.planned_date is not None:
+        fields["planned_date"] = body.planned_date
+    if body.post_notes is not None:
+        fields["post_notes"] = body.post_notes
+    if body.status is not None:
+        fields["status"] = body.status
+    if fields:
+        update_linkedin_post_fields(post_id, fields)
+    return {"ok": True}
+
+
+@app.get("/api/v2/linkedin/analytics")
+async def get_linkedin_analytics_endpoint():
+    from db import get_linkedin_analytics
+    return get_linkedin_analytics()
+
+
+@app.get("/api/v2/linkedin/scheduled")
+async def get_scheduled_posts_endpoint():
+    from db import get_scheduled_posts
+    return get_scheduled_posts()
+
+
+@app.get("/api/v2/linkedin/export-brief")
+async def export_content_brief():
+    from db import get_latest_linkedin_analysis, list_linkedin_posts, list_linkedin_ideas
+    import json as _json
+
+    analysis = get_latest_linkedin_analysis()
+    posts = list_linkedin_posts()
+    ideas = list_linkedin_ideas()
+    now_str = datetime.now().strftime("%B %d, %Y")
+
+    lines = [
+        f"# LinkedIn Content Brief — {now_str}",
+        "",
+    ]
+
+    if analysis:
+        lines += [
+            "## Content Landscape Analysis",
+            "",
+            analysis.get("timeline_summary", ""),
+            "",
+            f"**Posting cadence:** {analysis.get('own_cadence', '—')}",
+            f"**Best day to post:** {analysis.get('best_day_guess', '—')}",
+            "",
+        ]
+        if analysis.get("content_themes"):
+            lines += ["**Top themes:**"] + [f"- {t}" for t in analysis["content_themes"]] + [""]
+        if analysis.get("content_gaps"):
+            lines += ["**Content gaps:**"] + [f"- {g}" for g in analysis["content_gaps"]] + [""]
+
+    drafted_ideas = [i for i in ideas if i.get("status") in ("drafting", "drafted") and i.get("draft_content")]
+    if drafted_ideas:
+        lines += ["## Drafted Posts", ""]
+        for idea in drafted_ideas:
+            lines += [
+                f"### {idea['topic']} ({idea.get('angle', '')})",
+                "",
+                idea.get("draft_content", ""),
+                "",
+                f"*Format: {idea.get('suggested_format', '')}*",
+                "",
+                "---",
+                "",
+            ]
+
+    selected_posts = [p for p in posts if p.get("status") == "selected"]
+    if selected_posts:
+        lines += ["## Selected Posts (Ready to Publish)", ""]
+        for post in selected_posts:
+            planned = post.get("planned_date", "")
+            date_str = f" — Planned: {planned}" if planned else ""
+            lines += [
+                f"**{post.get('trend_cluster', 'Post')}{date_str}** ({post.get('strategy', '')})",
+                "",
+                post.get("content", ""),
+                "",
+                "---",
+                "",
+            ]
+
+    if analysis and analysis.get("post_ideas"):
+        lines += ["## Post Ideas Pipeline", ""]
+        for idea in analysis["post_ideas"]:
+            lines += [
+                f"- **{idea.get('topic', '')}** ({idea.get('angle', '')}) — {idea.get('suggested_format', '')}",
+                f"  → {idea.get('rationale', '')}",
+            ]
+        lines.append("")
+
+    brief = "\n".join(lines)
+    return {"brief": brief, "generated_at": datetime.now().isoformat(), "char_count": len(brief)}
 
 
 @app.post("/api/v2/linkedin/score-post")

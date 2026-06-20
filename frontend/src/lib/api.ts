@@ -774,8 +774,12 @@ export async function deleteLinkedInTarget(id: string): Promise<void> {
   await request(`/api/v2/linkedin/targets/${id}`, { method: 'DELETE' });
 }
 
-export async function fetchAndAnalyzeLinkedIn(): Promise<{ analysis_id: string; fetched_count: number; analysis: LinkedInAnalysis; fetched_posts: FetchedPost[] }> {
-  return request('/api/v2/linkedin/fetch-analyze', { method: 'POST' });
+export async function fetchAndAnalyzeLinkedIn(force = false): Promise<{ analysis_id: string | null; fetched_count: number; analysis: LinkedInAnalysis; fetched_posts: FetchedPost[]; skipped?: boolean; age_minutes?: number }> {
+  return request('/api/v2/linkedin/fetch-analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force }),
+  });
 }
 
 export async function getLinkedInAnalysis(): Promise<LinkedInAnalysis | null> {
@@ -835,4 +839,53 @@ export async function remixCompetitorPost(original_content: string, company_name
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ original_content, company_name }),
   });
+}
+
+export interface LinkedInAnalytics {
+  total_posts: number;
+  published: number;
+  selected: number;
+  this_month_generated: number;
+  this_month_published: number;
+  total_ideas: number;
+  drafted_ideas: number;
+  targets_tracked: number;
+  scheduled_posts: number;
+}
+
+export interface ScheduledPost {
+  id: string;
+  content: string;
+  char_count: number;
+  status: string;
+  planned_date: string;
+  strategy?: string;
+  trend_cluster?: string;
+  created_at: string;
+}
+
+export interface ContentBrief {
+  brief: string;
+  generated_at: string;
+  char_count: number;
+}
+
+export async function getLinkedInAnalytics(): Promise<LinkedInAnalytics> {
+  return request('/api/v2/linkedin/analytics');
+}
+
+export async function getScheduledPosts(): Promise<ScheduledPost[]> {
+  return request('/api/v2/linkedin/scheduled');
+}
+
+export async function updateLinkedInPost(postId: string, data: { planned_date?: string; post_notes?: string; status?: string }): Promise<{ ok: boolean }> {
+  return request(`/api/v2/linkedin/posts/${postId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function exportContentBrief(): Promise<ContentBrief> {
+  return request('/api/v2/linkedin/export-brief');
 }
