@@ -342,7 +342,7 @@ function OutreachView({
                 type="text"
                 value={form.sender_company}
                 onChange={(e) => setForm((p) => ({ ...p, sender_company: e.target.value }))}
-                placeholder="Pipaltree AI"
+                placeholder="KS Business"
                 required
                 className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               />
