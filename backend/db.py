@@ -153,6 +153,32 @@ def init_db():
             result_json TEXT NOT NULL,
             created_at TEXT
         );
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            full_name TEXT NOT NULL,
+            company_name TEXT,
+            job_title TEXT,
+            hashed_password TEXT NOT NULL,
+            created_at TEXT,
+            last_login TEXT
+        );
+        CREATE TABLE IF NOT EXISTS deal_outcomes (
+            id TEXT PRIMARY KEY,
+            pipeline_id TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            actual_deal_size TEXT,
+            loss_reason TEXT,
+            notes TEXT,
+            icp_score_at_time INTEGER,
+            recorded_at TEXT,
+            FOREIGN KEY (pipeline_id) REFERENCES pipelines(id)
+        );
+        CREATE TABLE IF NOT EXISTS icp_weights (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            weights_json TEXT,
+            updated_at TEXT
+        );
         """)
         _ensure_columns(conn)
 
@@ -166,6 +192,7 @@ _PIPELINE_EXTRA_COLUMNS = {
     "notes": "TEXT",
     "gathered_json": "TEXT",
     "human_input": "TEXT",
+    "user_id": "TEXT",
 }
 _PROSPECT_EXTRA_COLUMNS = {
     "prospect_status": "TEXT",
@@ -184,6 +211,9 @@ _EMAIL_EXTRA_COLUMNS = {
     "sent_at": "TEXT",
     "replied_at": "TEXT",
     "email_notes": "TEXT",
+    "sequence_json": "TEXT",
+    "persona_angle": "TEXT",
+    "personalization_hook": "TEXT",
 }
 
 def _ensure_columns(conn):
@@ -856,3 +886,111 @@ def get_stats():
         avg_score = round(sum(scores)/len(scores)) if scores else 0
         return {"total_pipelines": total, "active_pipelines": active, "completed_pipelines": completed,
                 "total_prospects_identified": total_prospects, "avg_engagement_score": avg_score}
+
+
+# ── Users ──────────────────────────────────────────────────────────────────────
+
+def create_user(id: str, email: str, full_name: str, hashed_password: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO users (id, email, full_name, hashed_password, created_at) VALUES (?,?,?,?,?)",
+            (id, email, full_name, hashed_password, datetime.now().isoformat())
+        )
+
+
+def get_user_by_email(email: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        return dict(row) if row else None
+
+
+def get_user_by_id(user_id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def update_user_last_login(user_id: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET last_login=? WHERE id=?", (datetime.now().isoformat(), user_id))
+
+
+# ── Pipeline user ownership ────────────────────────────────────────────────────
+
+def set_pipeline_user(pipeline_id: str, user_id: str):
+    with get_conn() as conn:
+        conn.execute("UPDATE pipelines SET user_id=? WHERE id=?", (user_id, pipeline_id))
+
+
+def list_pipelines_for_user(user_id: str) -> list[dict]:
+    """Return pipelines belonging to a specific user (or all if user_id is None)."""
+    with get_conn() as conn:
+        if user_id:
+            rows = conn.execute(
+                "SELECT id,company_name,company_url,status,intelligence_json,error_message,created_at,"
+                "deal_size,priority FROM pipelines WHERE user_id=? OR user_id IS NULL ORDER BY created_at DESC",
+                (user_id,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id,company_name,company_url,status,intelligence_json,error_message,created_at,"
+                "deal_size,priority FROM pipelines ORDER BY created_at DESC"
+            ).fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            if d.get("intelligence_json"):
+                d["intelligence"] = json.loads(d["intelligence_json"])
+            d.pop("intelligence_json", None)
+            result.append(d)
+        return result
+
+
+# ── Deal Outcomes ──────────────────────────────────────────────────────────────
+
+def save_deal_outcome(id: str, pipeline_id: str, outcome: str, actual_deal_size: str | None,
+                      loss_reason: str | None, notes: str | None, icp_score_at_time: int | None):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO deal_outcomes (id, pipeline_id, outcome, actual_deal_size, loss_reason, notes, "
+            "icp_score_at_time, recorded_at) VALUES (?,?,?,?,?,?,?,?)",
+            (id, pipeline_id, outcome, actual_deal_size, loss_reason, notes,
+             icp_score_at_time, datetime.now().isoformat())
+        )
+
+
+def get_icp_calibration_stats() -> list[dict]:
+    """Group deal outcomes by ICP score band and compute win rates."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT outcome, icp_score_at_time FROM deal_outcomes WHERE icp_score_at_time IS NOT NULL"
+        ).fetchall()
+    bands: dict[str, dict] = {
+        "0-39": {"band": "0-39", "total": 0, "won": 0, "lost": 0},
+        "40-59": {"band": "40-59", "total": 0, "won": 0, "lost": 0},
+        "60-74": {"band": "60-74", "total": 0, "won": 0, "lost": 0},
+        "75-89": {"band": "75-89", "total": 0, "won": 0, "lost": 0},
+        "90-100": {"band": "90-100", "total": 0, "won": 0, "lost": 0},
+    }
+    for row in rows:
+        outcome, score = row[0], row[1]
+        if score < 40:
+            key = "0-39"
+        elif score < 60:
+            key = "40-59"
+        elif score < 75:
+            key = "60-74"
+        elif score < 90:
+            key = "75-89"
+        else:
+            key = "90-100"
+        bands[key]["total"] += 1
+        if outcome == "won":
+            bands[key]["won"] += 1
+        elif outcome == "lost":
+            bands[key]["lost"] += 1
+    result = []
+    for b in bands.values():
+        b["win_rate"] = round(b["won"] / b["total"] * 100, 1) if b["total"] > 0 else None
+        result.append(b)
+    return result

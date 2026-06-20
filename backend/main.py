@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -9,7 +9,7 @@ import logging
 from dotenv import load_dotenv
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
 
 load_dotenv()
@@ -124,9 +124,11 @@ class EmailRequest(BaseModel):
     sender_company: str
     sender_offering: str
     tone: str = "professional"
-    trigger_event: str = ""      # editable recent signal — funding, launch, etc.
-    linkedin_quote: str = ""     # specific quote from prospect's LinkedIn / interview
-    word_limit: int = 150        # max words for the email body
+    message_type: str = "cold_email"   # cold_email|follow_up_email|linkedin_message|linkedin_connection|call_script
+    trigger_event: str = ""            # editable opening hook / recent signal
+    linkedin_quote: str = ""           # prospect's LinkedIn post or interview quote
+    pain_focus: str = ""               # pain point title to anchor on (optional)
+    word_limit: int = 150
 
 class PitchRequest(BaseModel):
     prospect_id: str
@@ -153,6 +155,21 @@ class FeedbackRequest(BaseModel):
     output_id: Optional[str] = None
     rating: int
     note: Optional[str] = None
+
+class DealOutcomeRequest(BaseModel):
+    outcome: str  # "won" | "lost" | "dead"
+    actual_deal_size: Optional[str] = None
+    loss_reason: Optional[str] = None
+    notes: Optional[str] = None
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 class EmailABRequest(BaseModel):
     prospect_id: str
