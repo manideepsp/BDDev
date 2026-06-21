@@ -807,10 +807,13 @@ export default function PipelinePage() {
   const [continued, setContinued] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ generated: number; total: number } | null>(null);
+  const [bulkError, setBulkError] = useState('');
   const [driftLoading, setDriftLoading] = useState(false);
   const [driftResult, setDriftResult] = useState<DriftResult | null>(null);
+  const [driftError, setDriftError] = useState('');
   const [competitiveLoading, setCompetitiveLoading] = useState(false);
   const [competitiveResult, setCompetitiveResult] = useState<CompetitiveAnalysis | null>(null);
+  const [compError, setCompError] = useState('');
   const [profileSuggestions, setProfileSuggestions] = useState<ProfileSuggestions | null>(null);
 
   const PAUSED = (s?: string) => s === 'complete' || s === 'failed' || s === 'awaiting_input';
@@ -1084,8 +1087,9 @@ export default function PipelinePage() {
                     size="sm"
                     onClick={async () => {
                       setCompetitiveLoading(true);
+                      setCompError('');
                       try { setCompetitiveResult(await runCompetitiveAnalysis(id)); }
-                      catch { /* silent */ }
+                      catch (err) { setCompError(err instanceof Error ? err.message : 'Competitive analysis failed — please try again'); }
                       finally { setCompetitiveLoading(false); }
                     }}
                     disabled={competitiveLoading}
@@ -1096,6 +1100,7 @@ export default function PipelinePage() {
                   </Button>
                 )}
               </div>
+              {compError && <p className="text-sm text-danger mt-2">{compError}</p>}
               {competitiveResult && (
                 <div className="space-y-3">
                   <Card className={cn(
@@ -1156,8 +1161,9 @@ export default function PipelinePage() {
                 size="sm"
                 onClick={async () => {
                   setDriftLoading(true);
+                  setDriftError('');
                   try { setDriftResult(await runDriftCheck(id)); }
-                  catch { /* silent */ }
+                  catch (err) { setDriftError(err instanceof Error ? err.message : 'Drift check failed — please try again'); }
                   finally { setDriftLoading(false); }
                 }}
                 disabled={driftLoading}
@@ -1167,6 +1173,7 @@ export default function PipelinePage() {
                 {driftLoading ? 'Checking for changes…' : 'Check for New Signals'}
               </Button>
             </div>
+            {driftError && <p className="text-sm text-danger mt-2">{driftError}</p>}
             {driftResult && (
               <Card className={cn(
                 driftResult.alert_level === 'high' ? 'border-danger/40' :
@@ -1216,11 +1223,14 @@ export default function PipelinePage() {
                   onClick={async () => {
                     setBulkLoading(true);
                     setBulkResult(null);
+                    setBulkError('');
                     try {
                       const r = await bulkGenerate(id, { generate_poc: true, generate_email: true, tone: 'professional', word_limit: 150 });
                       setBulkResult({ generated: r.generated, total: r.total });
                       await fetchPipeline();
-                    } catch { /* silently surface via indicator */ }
+                    } catch (err) {
+                      setBulkError(err instanceof Error ? err.message : 'Failed to generate — please try again');
+                    }
                     finally { setBulkLoading(false); }
                   }}
                   disabled={bulkLoading}
@@ -1238,6 +1248,7 @@ export default function PipelinePage() {
                 Generated for {bulkResult.generated} of {bulkResult.total} prospects &mdash; click any card to view.
               </div>
             )}
+            {bulkError && <p className="text-sm text-danger mt-2 mb-4">{bulkError}</p>}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {prospects.map(prospect => {

@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Search, Users, Mail, BookOpen, Sun,
   TrendingUp, Map, Settings, Zap,
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 function LinkedinIcon({ className }: { className?: string }) {
   return (
@@ -103,6 +104,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const isActive = (href: string) => href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   return (
@@ -153,12 +155,12 @@ export default function Sidebar() {
           onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[12px] font-bold text-white bg-gradient-to-br from-primary/60 to-violet-600/60">
-            M
+            {(user?.full_name ?? user?.email ?? 'U')[0].toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium text-white/80 truncate">Manideep</div>
+            <div className="text-[13px] font-medium text-white/80 truncate">{user?.full_name ?? user?.email?.split('@')[0] ?? 'User'}</div>
             <div className="text-[11px] truncate" style={{ color: 'hsl(var(--sidebar-foreground) / 0.35)' }}>
-              ks.business
+              {user?.email ?? 'ks.business'}
             </div>
           </div>
           <Settings className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0" />

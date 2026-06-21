@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const PRIORITY_BADGE: Record<string, 'danger' | 'warning' | 'muted'> = {
   high: 'danger',
@@ -121,6 +122,7 @@ function ActionRow({ action }: { action: RecommendedAction }) {
 }
 
 export default function BriefPage() {
+  const { user } = useAuth();
   const [data, setData] = useState<BriefData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -163,7 +165,7 @@ export default function BriefPage() {
           <div>
             <div className="flex items-center gap-2">
               <Sun className="w-6 h-6 text-warning" />
-              <h1 className="text-xl font-bold text-foreground">{greeting}, Manideep</h1>
+              <h1 className="text-xl font-bold text-foreground">{greeting}, {user?.full_name?.split(' ')[0] ?? 'there'}</h1>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               {data?.date ?? 'Loading your AI-generated morning brief…'}
@@ -215,6 +217,9 @@ export default function BriefPage() {
                       <p className="text-muted-foreground text-sm">No hot prospects yet</p>
                       <Link href="/analyze" className="text-xs text-primary font-medium mt-1 block">
                         Analyse more companies →
+                      </Link>
+                      <Link href="/analyze">
+                        <Button size="sm" className="mt-3">Start New Analysis →</Button>
                       </Link>
                     </div>
                   )}

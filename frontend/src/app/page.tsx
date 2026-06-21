@@ -167,6 +167,7 @@ export default function Dashboard() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     Promise.all([listPipelines(), getStats()])
@@ -274,6 +275,21 @@ export default function Dashboard() {
             </span>
           </CardHeader>
 
+          {!loading && pipelines.length > 0 && (
+            <div className="px-6 pb-2">
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search companies..."
+                  className="w-full border border-input rounded-lg pl-9 pr-3 py-2 text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="px-6 py-6 space-y-4">
               {[1, 2, 3].map(i => (
@@ -330,7 +346,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {pipelines.map((p) => {
+                  {pipelines.filter(p => p.company_name.toLowerCase().includes(search.toLowerCase())).map((p) => {
                     const isActive = ACTIVE_STATUSES.has(p.status);
                     const score = p.intelligence?.engagement_score?.score ?? 0;
                     const prospectCount = p.prospects?.length ?? p.intelligence?.prospects?.length;

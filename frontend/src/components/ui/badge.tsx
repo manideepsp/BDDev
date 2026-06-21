@@ -20,10 +20,11 @@ const badgeVariants = cva(
         medium:      'bg-warning-subtle text-amber-700 border border-warning/30',
         low:         'bg-danger-subtle text-danger border border-danger/20',
         // pipeline
-        complete:    'bg-success-subtle text-success border border-success/20',
-        active:      'bg-primary/10 text-primary border border-primary/20',
-        failed:      'bg-danger-subtle text-danger border border-danger/20',
-        pending:     'bg-muted text-muted-foreground border border-border',
+        complete:        'bg-success-subtle text-success border border-success/20',
+        active:          'bg-primary/10 text-primary border border-primary/20',
+        failed:          'bg-danger-subtle text-danger border border-danger/20',
+        pending:         'bg-muted text-muted-foreground border border-border',
+        awaiting_input:  'bg-amber-50 text-amber-700 border border-amber-200',
       },
       size: {
         default: 'text-xs px-2.5 py-0.5',
