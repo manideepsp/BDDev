@@ -879,7 +879,8 @@ async def fetch_and_analyze(body: LinkedInFetchAnalyzeRequest = Body(default_fac
 
     tasks = []
     if own_company:
-        tasks.append(fetch_one(own_company, company_profile.get("website_url", ""), "own"))
+        own_url = company_profile.get("website_url", "") or ""
+        tasks.append(fetch_one(own_company, own_url, "own"))
     for target in targets:
         tasks.append(fetch_one(target["company_name"], target.get("website_url", ""), "target"))
 
