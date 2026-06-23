@@ -604,12 +604,24 @@ function IntelligenceTab({ companyProfile, targets, analysis, fetching, onAddTar
           </CardContent>
         </Card>
 
+        {!ownName && targets.length === 0 && (
+          <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning-foreground flex items-start gap-2">
+            <span className="mt-0.5">⚠️</span>
+            <span>
+              Set your company name &amp; website in{' '}
+              <a href="/settings" className="underline font-medium hover:text-foreground">Settings</a>
+              {' '}or add a competitor above to enable fetching.
+            </span>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Button
             className="w-full"
             size="lg"
             onClick={() => onFetchAnalyze(false)}
             disabled={fetching || (!ownName && targets.length === 0)}
+            title={!ownName && targets.length === 0 ? 'Add your company in Settings first' : undefined}
           >
             {fetching ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Fetching &amp; Analysing…</>
@@ -641,9 +653,21 @@ function IntelligenceTab({ companyProfile, targets, analysis, fetching, onAddTar
           <AnalysisSkeleton />
         ) : !analysis ? (
           <Card>
-            <CardContent className="p-10 text-center">
-              <BarChart2 className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Add competitor companies and click Fetch &amp; Analyse to unlock content intelligence.</p>
+            <CardContent className="p-8 text-center space-y-3">
+              <BarChart2 className="w-10 h-10 text-muted-foreground/40 mx-auto" />
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1">No intelligence yet</p>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  Click <strong>Fetch &amp; Analyse</strong> to scrape your company&apos;s website, LinkedIn, and any competitor companies you add — then get an AI content intelligence report.
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/50 border border-border px-4 py-3 text-left text-xs text-muted-foreground space-y-1 max-w-sm mx-auto">
+                <p className="font-medium text-foreground">How it works:</p>
+                <p>1. Set your company &amp; website in <a href="/settings" className="underline text-primary">Settings</a></p>
+                <p>2. Add competitor companies in the panel on the left</p>
+                <p>3. Click Fetch &amp; Analyse — takes ~15 seconds</p>
+                <p>4. Browse post ideas, competitor angles, and content gaps</p>
+              </div>
             </CardContent>
           </Card>
         ) : (
@@ -1617,10 +1641,14 @@ export default function LinkedInPage() {
       setAnalysis({ ...result.analysis, fetched_posts: result.fetched_posts });
       if (result.skipped) {
         toast(`Using cached analysis (${result.age_minutes}m old) — click Force refresh to re-fetch`, 'info');
+      } else if (result.fetched_count === 0) {
+        toast('No posts found — make sure your company Website URL is set in Settings, then try Force refresh', 'error');
       } else {
         toast(`Fetched ${result.fetched_count} posts and generated analysis`);
       }
-    } catch { toast('Fetch & Analyse failed — try again', 'error'); }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Fetch & Analyse failed — check that your backend is running', 'error');
+    }
     finally { setFetching(false); }
   }
 
