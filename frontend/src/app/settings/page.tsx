@@ -28,7 +28,7 @@ const BRAND_VOICE_TONES = [
 ];
 
 const EMPTY: CompanyProfile = {
-  company_name: '', company_type: '', team_size: '', headquarters: '',
+  company_name: '', website_url: '', company_type: '', team_size: '', headquarters: '',
   services: [], industries: [], technologies: '', case_studies: '', usps: '',
   engagement_models: [],
   brand_voice_tone: 'professional',
@@ -175,7 +175,7 @@ export default function SettingsPage() {
         <div className="max-w-3xl mx-auto">
           <h1 className="text-xl font-bold text-foreground tracking-tight">Company Profile</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Fill this once. Every analysis personalizes its pain points, ICP score, and pitch assets against what you actually offer.
+            Configure your company once — editable any time. Used across all analyses, email generation, and LinkedIn intelligence.
           </p>
         </div>
       </div>
@@ -192,12 +192,23 @@ export default function SettingsPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>Company Name</label>
+                  <label className={labelCls}>Company Name <span className="text-danger">*</span></label>
                   <Input
                     value={profile.company_name}
                     onChange={e => setProfile(p => ({ ...p, company_name: e.target.value }))}
                     placeholder="Cognine Technologies"
+                    required
                   />
+                </div>
+                <div>
+                  <label className={labelCls}>Website URL <span className="text-danger">*</span></label>
+                  <Input
+                    type="url"
+                    value={profile.website_url}
+                    onChange={e => setProfile(p => ({ ...p, website_url: e.target.value }))}
+                    placeholder="https://cognine.com"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Used for LinkedIn intelligence scraping</p>
                 </div>
                 <div>
                   <label className={labelCls}>Type</label>

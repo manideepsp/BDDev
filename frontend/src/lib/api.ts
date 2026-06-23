@@ -266,6 +266,7 @@ export interface PitchAssets {
 
 export interface CompanyProfile {
   company_name: string;
+  website_url: string;
   company_type: string;
   team_size: string;
   headquarters: string;
